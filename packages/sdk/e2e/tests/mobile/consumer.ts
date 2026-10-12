@@ -192,7 +192,28 @@ async function resolveBatchAttachmentPath(inputPath: string) {
   return await resolveBundledAssetUri(assetModule)
 }
 
+/**
+ * The app's Documents directory survives a reinstall, so on a device that is kept between runs the
+ * registry's RocksDB store carries over and eventually fails every query with a manifest/SST
+ * mismatch. It holds metadata and re-syncs; the model cache beside it is left alone.
+ */
+async function resetRegistryStore() {
+  try {
+    // @ts-ignore - expo-file-system is a peer dependency available in mobile context
+    const { Directory, Paths } = await import('expo-file-system')
+    const store = new Directory(Paths.document, '.qvac', 'registry-corestore')
+    if (!store.exists) return
+    store.delete()
+    console.log(`🧹 Reset the registry store at ${store.uri}`)
+  } catch (error) {
+    // A leg that cannot clean is worth a line, not a dead run.
+    console.log(`⚠️  Could not reset the registry store: ${(error as Error).message}`)
+  }
+}
+
 export async function bootstrap(filteredTests?: TestDefinition[]) {
+  // Before anything opens the registry.
+  await resetRegistryStore()
   await ensureMobileE2EConfig(isResilienceOnlyRun(filteredTests))
 
   // `filteredTests` (when present) is the producer's post-filter test list

@@ -532,13 +532,16 @@ jobs:
 
           RUN_NAME="mobile-${{ steps.select.outputs.name }}-${{ github.run_number }}-${{ github.run_attempt }}"
 
+          # appPackagesCleanup uninstalls the app when the run ends. On a private device,
+          # which keeps its data between runs, that is the only thing that clears the
+          # app's container.
           RUN_ARN=$(aws devicefarm schedule-run \
             --project-arn "${{ inputs.device-farm-project-arn }}" \
             --device-pool-arn "${{ steps.select.outputs.arn }}" \
             --app-arn "${{ steps.upload-app.outputs.app-arn }}" \
             --name "$RUN_NAME" \
             --test type=APPIUM_NODE,testPackageArn=${{ steps.upload-test-pkg.outputs.pkg-arn }},testSpecArn=${{ steps.upload-spec.outputs.spec-arn }} \
-            --execution-configuration jobTimeoutMinutes=${{ inputs.device-farm-timeout }} \
+            --execution-configuration jobTimeoutMinutes=${{ inputs.device-farm-timeout }},appPackagesCleanup=true \
             --query 'run.arn' --output text)
 
           echo "run-arn=$RUN_ARN" >> $GITHUB_OUTPUT
