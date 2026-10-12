@@ -1077,7 +1077,7 @@ merged into native master on October 12. This registry pin uses that final
 merge commit. Land registry #423, then update the baseline to the actual
 registry main commit and remove the temporary `reference` once the version is
 on main. The implementation dependency is
-[qvac #4976](https://github.com/tetherto/qvac/pull/4976).
+[qvac #5001](https://github.com/tetherto/qvac/pull/5001).
 Earlier native GPU results do not establish full CUDA/Vulkan validation of
 this merged native source or the packaged ASR addon. Keep this consumer draft
 until its dependency and packaged GPU validation gates pass. Fresh packaged
@@ -1109,8 +1109,9 @@ For a Vulkan-only Linux host, generate with `-D ASR_CUDA=OFF` and run only the
 Vulkan command. These checks must execute both default-prompt and hotword
 transcription and assert the selected backend; an explicit backend run fails
 when a fixture is missing. Registry dry-runs, forwarding tests, and compilation
-alone do not validate packaged addon GPU inference. Fork CI still requires the
-repository's normal approval gate.
+alone do not validate packaged addon GPU inference. This upstream consumer PR
+targets the implementation branch for an incremental review; its CI and
+packaged validation gates remain outstanding.
 
 Typical loop: `npm install && npm run build && npm run test:integration`.
 
