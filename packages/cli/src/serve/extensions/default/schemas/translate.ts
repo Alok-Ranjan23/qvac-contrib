@@ -4,11 +4,28 @@ import { z } from 'zod'
 export const MAX_BATCH_INPUTS = 100
 
 /** Mirrors the SDK's NMT `translate()` arguments. */
-export const translateBody = z.strictObject({
-  model: z.string().min(1),
-  text: z.union([z.string().min(1), z.array(z.string().min(1)).min(1).max(MAX_BATCH_INPUTS)]),
-  stream: z.boolean().optional()
-})
+// The batch cap is checked after the union: from Zod 4.6.6 an over-cap array
+// inside it surfaces only as `invalid_union`, losing the `too_big` the error
+// code keys off.
+export const translateBody = z
+  .strictObject({
+    model: z.string().min(1),
+    text: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
+    stream: z.boolean().optional()
+  })
+  .superRefine((body, ctx) => {
+    if (Array.isArray(body.text) && body.text.length > MAX_BATCH_INPUTS) {
+      ctx.addIssue({
+        code: 'too_big',
+        origin: 'array',
+        maximum: MAX_BATCH_INPUTS,
+        inclusive: true,
+        input: body.text,
+        path: ['text'],
+        message: `Too big: expected array to have <=${MAX_BATCH_INPUTS} items`
+      })
+    }
+  })
 
 /** The `translate()` model types that map to the `translation` category. */
 export type NmtModelType = 'nmt' | 'nmtcpp-translation'
