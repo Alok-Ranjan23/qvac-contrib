@@ -2589,13 +2589,14 @@ test("iOS mobile runs collect on-device crash reports", () => {
   // Anchor on the emitted YAML key, not the word — prose above mentions it too.
   const postTestPhase = generateTestspec.indexOf("  post_test:\n    commands:");
   assert.ok(crashPull > 0, "iOS crash-report pull must exist");
-  assert.ok(
-    androidLogcat > 0,
-    "Android logcat collection must stay in post_test",
-  );
+  assert.ok(androidLogcat > 0, "Android logcat collection must exist");
   assert.ok(
     crashPull < postTestPhase,
     "crash pull must be emitted in the test phase — post_test never runs on a failed test",
+  );
+  assert.ok(
+    androidLogcat < postTestPhase,
+    "adb logcat must be emitted in the test phase — post_test never runs on a failed test",
   );
 
   // Re-exits with wdio's own code, so wrapping cannot change a run's verdict.
