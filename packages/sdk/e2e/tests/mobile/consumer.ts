@@ -202,9 +202,21 @@ async function resetRegistryStore() {
     // @ts-ignore - expo-file-system is a peer dependency available in mobile context
     const { Directory, Paths } = await import('expo-file-system')
     const store = new Directory(Paths.document, '.qvac', 'registry-corestore')
-    if (!store.exists) return
-    store.delete()
-    console.log(`🧹 Reset the registry store at ${store.uri}`)
+    if (store.exists) {
+      store.delete()
+      console.log(`🧹 Reset the registry store at ${store.uri}`)
+      return
+    }
+    // Name what was found instead: on a device nobody can open, having nothing to clean and
+    // looking in the wrong place read the same.
+    const root = new Directory(Paths.document, '.qvac')
+    const siblings = root.exists
+      ? root
+          .list()
+          .map((entry: { name: string }) => entry.name)
+          .join(', ') || 'nothing'
+      : 'no .qvac directory'
+    console.log(`🧹 No registry store at ${store.uri} -- ${root.uri} holds: ${siblings}`)
   } catch (error) {
     // A leg that cannot clean is worth a line, not a dead run.
     console.log(`⚠️  Could not reset the registry store: ${(error as Error).message}`)
