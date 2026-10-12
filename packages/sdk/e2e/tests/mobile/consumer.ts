@@ -197,15 +197,14 @@ async function resolveBatchAttachmentPath(inputPath: string) {
  * registry's RocksDB store carries over and eventually fails every query with a manifest/SST
  * mismatch. It holds metadata and re-syncs; the model cache beside it is left alone.
  */
-async function resetRegistryStore() {
+async function resetRegistryStore(): Promise<string> {
   try {
     // @ts-ignore - expo-file-system is a peer dependency available in mobile context
     const { Directory, Paths } = await import('expo-file-system')
     const store = new Directory(Paths.document, '.qvac', 'registry-corestore')
     if (store.exists) {
       store.delete()
-      console.log(`🧹 Reset the registry store at ${store.uri}`)
-      return
+      return `🧹 Reset the registry store at ${store.uri}`
     }
     // Name what was found instead: on a device nobody can open, having nothing to clean and
     // looking in the wrong place read the same.
@@ -216,22 +215,24 @@ async function resetRegistryStore() {
           .map((entry: { name: string }) => entry.name)
           .join(', ') || 'nothing'
       : 'no .qvac directory'
-    console.log(`🧹 No registry store at ${store.uri} -- ${root.uri} holds: ${siblings}`)
+    return `🧹 No registry store at ${store.uri} -- ${root.uri} holds: ${siblings}`
   } catch (error) {
     // A leg that cannot clean is worth a line, not a dead run.
-    console.log(`⚠️  Could not reset the registry store: ${(error as Error).message}`)
+    return `⚠️  Could not reset the registry store: ${(error as Error).message}`
   }
 }
 
 export async function bootstrap(filteredTests?: TestDefinition[]) {
-  // Before anything opens the registry.
-  await resetRegistryStore()
+  // Has to happen before anything opens the registry; reported at the end, because a device's
+  // log capture starts after the app does and swallows whatever the first moments printed.
+  const storeNote = await resetRegistryStore()
   await ensureMobileE2EConfig(isResilienceOnlyRun(filteredTests))
 
   // `filteredTests` (when present) is the producer's post-filter test list
   // delivered via register-ack; absence keeps the legacy "warm everything" path.
   const allowedDeps = filteredTests ? collectTestDeps(filteredTests) : undefined
   await resources.downloadAllOnce(console.log, { allowedDeps })
+  console.log(storeNote)
 }
 
 export const executor = createExecutor({
