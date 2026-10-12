@@ -1066,17 +1066,15 @@ tests and the C++ option-mapping tests do not establish GPU execution.
 
 This development branch consumes `speech-cpp` 2026-10-12#1 from
 [registry PR #423](https://github.com/tetherto/qvac-registry-vcpkg/pull/423).
-Both the git registry `baseline` and temporary `reference` point at
-`a7c7dcbd0476049839f002315ba6d1a2eb27ae50`, so vcpkg can resolve the unmerged
-version database. The native source is `84b02694001cfea863167776dbc185474a816656`;
+The git registry `baseline` points at the actual merged main commit
+`e31be272ecdf9f20970302ebf8a2943d47803001`. The temporary `reference` is
+removed because main now contains the required version. The native source is `84b02694001cfea863167776dbc185474a816656`;
 `ggml-speech` stays at 2026-10-07#1. No addon release version is changed.
 
 Vulkan [#308](https://github.com/tetherto/qvac-fabric-speech.cpp/pull/308),
 including CUDA [#321](https://github.com/tetherto/qvac-fabric-speech.cpp/pull/321),
 merged into native master on October 12. This registry pin uses that final
-merge commit. Land registry #423, then update the baseline to the actual
-registry main commit and remove the temporary `reference` once the version is
-on main. The implementation dependency is
+merge commit. Registry #423 has landed. The implementation dependency is
 [qvac #5001](https://github.com/tetherto/qvac/pull/5001).
 Earlier native GPU results do not establish full CUDA/Vulkan validation of
 this merged native source or the packaged ASR addon. Keep this consumer draft
