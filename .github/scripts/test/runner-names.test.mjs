@@ -62,6 +62,9 @@ test('speech C++ test targets and standalone coverage workflows use the same CPU
       { os: 'ubuntu-22.04', platform: 'linux', arch: 'x64', runner: cpuRunner },
     ], name)
 
+    // asr-ggml and bci-whispercpp have no standalone coverage workflow: the nx
+    // lane runs their coverage mode. tts-ggml keeps one for its test:scripts step.
+    if (name !== 'tts-ggml') continue
     const standalone = readRepoFile(`.github/workflows/cpp-test-coverage-${name}.yml`)
     assert.match(standalone, /runner: \$\{\{ needs.runner_names.outputs.linux_ubuntu2204_x64 \}\}/, name)
     assert.doesNotMatch(standalone, /linux_ubuntu2204_x64_gpu/, name)

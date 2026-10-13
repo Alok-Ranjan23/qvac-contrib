@@ -113,8 +113,6 @@ const PENDING = [
   // run-cpp-addon-tests and run-desktop-addon-tests labels.
   ...[
     ['.github/workflows/cpp-lint.yaml', 2],
-    ['.github/workflows/cpp-test-coverage-asr-ggml.yml', 1],
-    ['.github/workflows/cpp-test-coverage-bci-whispercpp.yml', 1],
     ['.github/workflows/cpp-test-coverage-tts-ggml.yml', 1],
     ['.github/workflows/cpp-tests-llm.yml', 2],
     ['.github/workflows/cpp-tests-model-fit.yml', 1],

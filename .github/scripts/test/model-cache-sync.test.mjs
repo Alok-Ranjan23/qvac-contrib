@@ -141,12 +141,12 @@ test('rejects a collision between two distinct consumer call sites', () => {
 test('a NEW collision in an allowlisted file still fails', () => {
   const dir = sandbox()
   try {
-    const f = wf(dir, 'cpp-test-coverage-asr-ggml.yml')
+    const f = wf(dir, 'integration-test-asr-ggml.yml')
     const src = readFileSync(f, 'utf8')
-    // a second asr call site with a different glob: same class, not recorded
+    // a third asr call site with a different glob: same class, not recorded
     const extra = src.replace(
-      'cache-key-suffix: cpp-tests',
-      'cache-key-suffix: cpp-tests-extra',
+      'hash-files-glob: packages/asr-ggml/test/integration/*.manifest.json',
+      'hash-files-glob: packages/asr-ggml/test/integration/extra/*.manifest.json',
     )
     assert.notEqual(extra, src, 'fixture stale')
     writeFileSync(f, extra)
@@ -164,7 +164,7 @@ test('a NEW collision in an allowlisted file still fails', () => {
 test('fails when a recorded collision stops being observed', () => {
   const dir = sandbox()
   try {
-    edit(dir, 'cpp-test-coverage-asr-ggml.yml', /^ +paths: packages\/asr-ggml\/models$/m, '')
+    edit(dir, 'integration-test-asr-ggml.yml', /^ +paths: packages\/asr-ggml\/models$/m, '')
     const r = run(dir)
     assert.equal(r.status, 1, r.stdout)
     assert.match(r.stderr, /no longer observed/)

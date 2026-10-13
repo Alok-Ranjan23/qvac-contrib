@@ -2920,7 +2920,6 @@ const TRUSTED_CACHE_EVENTS = [
 // scope for QVAC-24711's first pass. Remove each entry as it is fixed -- this
 // list should only ever shrink.
 const TRUSTED_CACHE_EXEMPT = new Set([
-  ".github/workflows/cpp-test-coverage-asr-ggml.yml",
   ".github/workflows/cpp-test-coverage-tts-ggml.yml",
   // Exempt only for its three pre-existing ungated actions/cache@ writes (ccache,
   // parakeet GGUF, tts venv), reachable from on-pr-nx.yml (pull_request_target).
