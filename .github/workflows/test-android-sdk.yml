@@ -220,7 +220,20 @@ jobs:
           java-version: "17"
           distribution: "temurin"
 
+      # Self-hosted runners ship the SDK; skip setup-android's remote fetch there.
+      - name: Detect preprovisioned Android SDK
+        id: android_sdk
+        shell: bash
+        run: |
+          if [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/platform-tools/adb" ] \
+             && [ -e "$ANDROID_HOME/licenses/android-sdk-license" ]; then
+            echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+            find "$ANDROID_HOME/cmdline-tools" -mindepth 2 -maxdepth 2 -type d -name bin | sort -V | tail -1 >> "$GITHUB_PATH"
+            echo "preprovisioned=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # 3.2.2
+        if: steps.android_sdk.outputs.preprovisioned != 'true'
         with:
           # Drops `tools` from the action's default: the obsolete SDK Tools
           # package is gone from Google's repository and fails provisioning.
