@@ -1145,7 +1145,10 @@ test('every mobile dispatch offers the run-id route, or is a pinned exemption', 
 
     const problems = []
     if (!/^      prebuild_run_id:$/m.test(source)) problems.push('no prebuild_run_id input')
-    if (!source.includes('prebuild-run-id: ${{ inputs.prebuild_run_id }}')) {
+    const nativeDiagnosticsRoute = slug === 'tts-ggml' && source.includes(
+      'prebuild-run-id: ${{ inputs.build_native_diagnostics && github.run_id || inputs.prebuild_run_id }}',
+    )
+    if (!source.includes('prebuild-run-id: ${{ inputs.prebuild_run_id }}') && !nativeDiagnosticsRoute) {
       problems.push('input not wired into setup')
     }
     // Without actions: read the lookup 403s and the download fails — after the
@@ -1155,6 +1158,18 @@ test('every mobile dispatch offers the run-id route, or is a pinned exemption', 
   }
 
   assert.deepEqual(missing, [], `incomplete prebuild_run_id wiring:\n${missing.join('\n')}`)
+})
+
+test('TTS native diagnostics build the dispatched commit before installing its prebuilds', () => {
+  const source = read('.github/workflows/integration-mobile-test-tts-ggml.yml')
+  assert.match(source, /native-diagnostics:\n\s+needs: validate-devices\n\s+if: inputs\.build_native_diagnostics && inputs\.platform == 'Android'/)
+  const nativeJob = source.split('  native-diagnostics:')[1].split('  build-and-test:')[0]
+  assert.match(nativeJob, /uses: \.\/\.github\/workflows\/reusable-prebuilds\.yml/)
+  assert.match(nativeJob, /ref: \$\{\{ github\.sha \}\}/)
+  assert.match(nativeJob, /"platform":"android","arch":"arm64"/)
+  assert.match(source, /needs: \[runner_names, validate-devices, native-diagnostics\]/)
+  assert.match(source, /needs\.native-diagnostics\.result == 'success'/)
+  assert.match(source, /prebuild-run-id: \$\{\{ inputs\.build_native_diagnostics && github\.run_id \|\| inputs\.prebuild_run_id \}\}/)
 })
 
 test('ggml-rpc-server skips same-run prebuilds for a pinned run and verifies the source', () => {
