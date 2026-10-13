@@ -15,6 +15,12 @@ import type { CompanionSetMetadata, CompanionSetMetadataEntry, ProcessedModel } 
  *   Bergamot NMT sets (directory-based):
  *     Primary: `model.<langPair>.intgemm.alphas.bin`
  *     Companions in same directory: lex, vocab/srcvocab+trgvocab, metadata
+ *
+ *   Apple Core ML bundles:
+ *     Every file under a `<name>.mlmodelc/` directory is one component of a
+ *     compiled bundle the inference loader stages beside its GGUF on macOS and
+ *     iOS. No component is a model on its own, so all of them are
+ *     companion-only, as in the SDK catalog.
  */
 export function groupCompanionSets(models: ProcessedModel[]): ProcessedModel[] {
   const bySourcePath = new Map<string, ProcessedModel>()
@@ -26,6 +32,7 @@ export function groupCompanionSets(models: ProcessedModel[]): ProcessedModel[] {
 
   groupOnnxCompanions(models, bySourcePath, companionKeys)
   groupBergamotCompanions(models, bySourcePath, companionKeys)
+  markCoremlBundleComponents(models, companionKeys)
 
   return models.map((model) => {
     const key = sourceKey(model.registrySource, model.registryPath)
@@ -34,6 +41,16 @@ export function groupCompanionSets(models: ProcessedModel[]): ProcessedModel[] {
     }
     return model
   })
+}
+
+const COREML_BUNDLE_COMPONENT_RE = /(?:^|\/)[^/]+\.mlmodelc\//
+
+function markCoremlBundleComponents(models: ProcessedModel[], companionKeys: Set<string>): void {
+  for (const model of models) {
+    if (COREML_BUNDLE_COMPONENT_RE.test(model.registryPath)) {
+      companionKeys.add(sourceKey(model.registrySource, model.registryPath))
+    }
+  }
 }
 
 function groupOnnxCompanions(

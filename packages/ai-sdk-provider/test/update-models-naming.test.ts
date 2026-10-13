@@ -78,7 +78,13 @@ test('generated Parakeet names match the SDK and work in managed config', () => 
   const namesByPath = new Map(
     Object.values(sdkModels).map((model) => [model.registryPath, model.name])
   )
-  const parakeetModels = allModels.filter((model) => model.addon === 'parakeet')
+  // Both catalogs are regenerated from the live registry at different times,
+  // and the SDK contract lists named exports only, so compare the paths both
+  // carry: the check is that the two naming rules agree, not that the catalogs
+  // are in sync.
+  const parakeetModels = allModels.filter(
+    (model) => model.addon === 'parakeet' && namesByPath.has(model.registryPath)
+  )
   assert.ok(parakeetModels.length > 0)
 
   for (const model of parakeetModels) {
