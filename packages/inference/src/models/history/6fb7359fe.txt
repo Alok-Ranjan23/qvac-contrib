@@ -1,0 +1,8 @@
+commit=6fb7359fe76dde98707bab49109acef214346c51
+timestamp=2026-10-14T12:26:04.915Z
+previous_count=813
+new_count=814
+
+[added]
+PARAKEET_NEMOTRON_Q8_0
+
