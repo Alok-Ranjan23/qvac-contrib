@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.43.2] - 2026-10-15
+
+### Fixed
+
+- Fabric's GGML threadpools now default to `poll=0`, matching `llama-server`
+  and avoiding continuous CPU busy-waiting during GPU-offloaded embedding.
+  Explicit `poll` and `poll-batch` settings remain supported.
+
 ## [0.43.1] - 2026-09-30
 
 ### Changed
