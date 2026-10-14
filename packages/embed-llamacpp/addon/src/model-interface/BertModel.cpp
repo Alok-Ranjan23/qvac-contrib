@@ -1,3 +1,5 @@
+#include <uv.h>
+
 #include "BertModel.hpp"
 
 #include <algorithm>
