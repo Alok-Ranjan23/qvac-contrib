@@ -941,53 +941,37 @@ TEST_F(BertModelTest, CommonParamsParseSplitModeNone) {
 }
 
 TEST_F(BertModelTest, DefaultsCpuPollingToZero) {
-  if (!fs::exists(getValidModelPath())) {
-    FAIL() << "Test model not found at: " << getValidModelPath();
-  }
+  const auto setup = setupParams(
+      getInvalidModelPath(), {{"device", "cpu"}});
 
-  BertModel model(
-      getValidModelPath(),
-      std::unordered_map<std::string, std::string>{{"device", "cpu"}});
-  model.initializeBackend(test_backends_dir);
-  model.waitForLoadInitialization();
-  ASSERT_TRUE(model.isLoaded());
-
-  EXPECT_EQ(model.getCommonParams().cpuparams.poll, 0U);
-  EXPECT_EQ(model.getCommonParams().cpuparams_batch.poll, 0U);
+  EXPECT_EQ(setup.params.cpuparams.poll, 0U);
+  EXPECT_EQ(setup.params.cpuparams_batch.poll, 0U);
 }
 
 TEST_F(BertModelTest, ExplicitPollOverridesBothPoolDefaults) {
-  if (!fs::exists(getValidModelPath())) {
-    FAIL() << "Test model not found at: " << getValidModelPath();
-  }
+  const auto setup = setupParams(
+      getInvalidModelPath(), {{"device", "cpu"}, {"poll", "50"}});
 
-  BertModel model(
-      getValidModelPath(),
-      std::unordered_map<std::string, std::string>{
-          {"device", "cpu"}, {"poll", "50"}});
-  model.initializeBackend(test_backends_dir);
-  model.waitForLoadInitialization();
-  ASSERT_TRUE(model.isLoaded());
-
-  EXPECT_EQ(model.getCommonParams().cpuparams.poll, 50U);
-  EXPECT_EQ(model.getCommonParams().cpuparams_batch.poll, 50U);
+  EXPECT_EQ(setup.params.cpuparams.poll, 50U);
+  EXPECT_EQ(setup.params.cpuparams_batch.poll, 50U);
 }
 
 TEST_F(BertModelTest, ExplicitBatchPollOverridesPrimaryPoll) {
-  if (!fs::exists(getValidModelPath())) {
-    FAIL() << "Test model not found at: " << getValidModelPath();
-  }
+  const auto setup = setupParams(
+      getInvalidModelPath(),
+      {{"device", "cpu"}, {"poll", "50"}, {"poll-batch", "1"}});
 
-  BertModel model(
-      getValidModelPath(),
-      std::unordered_map<std::string, std::string>{
-          {"device", "cpu"}, {"poll", "50"}, {"poll-batch", "1"}});
-  model.initializeBackend(test_backends_dir);
-  model.waitForLoadInitialization();
-  ASSERT_TRUE(model.isLoaded());
+  EXPECT_EQ(setup.params.cpuparams.poll, 50U);
+  EXPECT_EQ(setup.params.cpuparams_batch.poll, 1U);
+}
 
-  EXPECT_EQ(model.getCommonParams().cpuparams.poll, 50U);
-  EXPECT_EQ(model.getCommonParams().cpuparams_batch.poll, 1U);
+TEST_F(BertModelTest, AcceptsBatchPollUnderscoreAlias) {
+  const auto setup = setupParams(
+      getInvalidModelPath(),
+      {{"device", "cpu"}, {"poll", "50"}, {"poll_batch", "1"}});
+
+  EXPECT_EQ(setup.params.cpuparams.poll, 50U);
+  EXPECT_EQ(setup.params.cpuparams_batch.poll, 1U);
 }
 
 TEST_F(BertModelTest, CommonParamsParseSplitModeLayer) {
