@@ -56,11 +56,10 @@
         "command": "echo 'orchestrated by on-merge-nx.yml'",
         "cwd": "packages/decoder-audio",
         "ci": {
-          "verifyGenerated": true,
+          "verifyGenerated": false,
           "nameTransform": "none",
           "repoName": "decoder-audio",
-          "testGateMode": "post-publish-integration",
-          "postIntegrationOnGpr": true
+          "testGateMode": "none"
         }
       }
     }

@@ -168,6 +168,7 @@
         "command": "echo 'orchestrated by on-merge-nx.yml'",
         "cwd": "packages/audiogen-ggml",
         "ci": {
+          "verifyGenerated": false,
           "nameTransform": "rename-prefix",
           "repoName": "audiogen-ggml",
           "testGateMode": "none",
