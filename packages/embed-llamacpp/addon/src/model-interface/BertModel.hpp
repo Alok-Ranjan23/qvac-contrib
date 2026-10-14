@@ -71,6 +71,11 @@ struct BertModelSetup {
   int64_t resolvedBackendDevice = 0;
 };
 
+/// Parse and normalize model loading parameters.
+BertModelSetup setupParams(
+    const std::string& modelGgufPath,
+    std::unordered_map<std::string, std::string> configFilemap);
+
 /// Apply the final split-device handles and remap positional tensor shares.
 void applySplitDeviceSelection(
     common_params& params, std::unordered_map<std::string, std::string>& config,
