@@ -7,7 +7,7 @@ const ImgStableDiffusion = require('../index')
 
 // Distilled Klein 4B: four Euler steps, text CFG 1, native FLUX.2 schedule.
 // CUDA im2col + matrix multiplication avoids the slow direct VAE convolution
-// path measured on GB10. Keep weights resident for sequential requests.
+// path measured on GB10 and RTX 5090. Keep weights resident for requests.
 async function main() {
   const modelsDir = path.resolve(process.env.FLUX_MODELS_DIR || path.join(__dirname, '../models'))
   const outputDir = path.resolve(process.env.FLUX_OUTPUT_DIR || path.join(__dirname, '../output'))
@@ -67,7 +67,7 @@ async function main() {
       }).await()
       const elapsedMs = Date.now() - start
       if (!png) throw new Error('FLUX.2 completed without a PNG')
-      const file = path.join(outputDir, `flux2-spark-${width}x${height}-${index}.png`)
+      const file = path.join(outputDir, `flux2-cuda-${width}x${height}-${index}.png`)
       fs.writeFileSync(file, png)
       console.log(`Request-to-PNG: ${elapsedMs} ms; saved ${file}`)
     }

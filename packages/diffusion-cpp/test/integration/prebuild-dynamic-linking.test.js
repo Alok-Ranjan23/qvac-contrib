@@ -133,21 +133,19 @@ test('linux prebuild has no hard GPU-loader deps and ships DL backend modules', 
     )
   }
 
-  if (target === 'linux-arm64') {
-    const cudaPath = path.join(PREBUILDS_DIR, target, MODULE_NAME, 'libqvac-diffusion-ggml-cuda.so')
-    t.ok(fs.existsSync(cudaPath), `CUDA DL backend module present: ${cudaPath}`)
-    const cudaNeeded = elfNeeded(fs.readFileSync(cudaPath))
-    t.comment(`libqvac-diffusion-ggml-cuda.so NEEDED: ${cudaNeeded.join(', ')}`)
-    t.ok(
-      cudaNeeded.find((n) => n.startsWith('libcudart.')),
-      'CUDA module links libcudart'
+  const cudaPath = path.join(PREBUILDS_DIR, target, MODULE_NAME, 'libqvac-diffusion-ggml-cuda.so')
+  t.ok(fs.existsSync(cudaPath), `CUDA DL backend module present: ${cudaPath}`)
+  const cudaNeeded = elfNeeded(fs.readFileSync(cudaPath))
+  t.comment(`libqvac-diffusion-ggml-cuda.so NEEDED: ${cudaNeeded.join(', ')}`)
+  t.ok(
+    cudaNeeded.find((n) => n.startsWith('libcudart.')),
+    'CUDA module links libcudart'
+  )
+  for (const lib of FORBIDDEN_RUNTIME) {
+    t.absent(
+      cudaNeeded.find((n) => n.startsWith(lib)),
+      `CUDA module must not depend on ${lib}*`
     )
-    for (const lib of FORBIDDEN_RUNTIME) {
-      t.absent(
-        cudaNeeded.find((n) => n.startsWith(lib)),
-        `CUDA module must not depend on ${lib}*`
-      )
-    }
   }
 })
 
@@ -159,7 +157,7 @@ test('linux prebuild has no hard GPU-loader deps and ships DL backend modules', 
 // suite, so this test cannot rely on catching the one-time
 // `load_backend: loaded Vulkan backend from ...` line — instead it requests
 // `backend: 'vulkan0'`, which requires that named backend to be registered.
-// Device index zero may be CUDA on an ARM64 release, so it is not a stable
+// Device index zero may be CUDA on a Linux release, so it is not a stable
 // way to select Vulkan. An unavailable explicit backend fails model load.
 test(
   'linux GPU host registers the Vulkan backend through the DL module',

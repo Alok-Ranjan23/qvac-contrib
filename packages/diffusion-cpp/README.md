@@ -62,7 +62,7 @@ The package exposes four JS entry points:
 | -------- | ------------ | ------ | -------------- |
 | macOS    | arm64, x64   | Tier 1 | Metal          |
 | Linux    | arm64        | Tier 1 | Vulkan, CUDA   |
-| Linux    | x64          | Tier 1 | Vulkan         |
+| Linux    | x64          | Tier 1 | Vulkan, CUDA   |
 | Android  | arm64        | Tier 1 | Vulkan, OpenCL |
 | iOS      | arm64        | Tier 1 | Metal          |
 | Windows  | x64          | Tier 1 | Vulkan         |
@@ -91,12 +91,17 @@ CUDA builds can be generated explicitly:
 npm run build:cuda
 ```
 
-Linux ARM64 releases include a dynamically loaded CUDA module with SM121a
-code for DGX Spark. CUDA execution requires the NVIDIA driver and CUDA 13
-runtime/cuBLAS libraries on the host; the addon itself retains CPU-only load
-compatibility. Linux x64 and Windows CUDA remain explicit source-build options.
-The ARM64 release uses the shared CI's pinned CUDA 13.0.3 toolkit and ggml's
-non-native architecture list, which includes `121a-real` (and `120a-real`).
+Linux ARM64 and x64 releases include dynamically loaded CUDA modules. The
+same `@qvac/diffusion-cpp` package contains both host prebuilds; Bare selects
+`prebuilds/linux-arm64` on DGX Spark and `prebuilds/linux-x64` on an x64 PC.
+CUDA execution requires the NVIDIA driver and CUDA 13 runtime/cuBLAS
+libraries on the host; the addon itself retains CPU-only load compatibility.
+Windows CUDA remains an explicit source-build option.
+
+Both Linux builds use the shared CI's pinned CUDA 13.0.3 toolkit and ggml's
+non-native architecture list, including `121a-real` for DGX Spark and
+`120a-real` for RTX 5090. These are distinct GPU targets; the host addon must
+also match the CPU architecture.
 
 ## Downloading Models
 
@@ -142,7 +147,7 @@ Downloads are resumable where supported by the script.
 | -------------------------------------------- | ------------------------------------------- |
 | `npm run example`                            | Load/unload the default FLUX.2 model        |
 | `npm run generate`                           | FLUX.2 text-to-image                        |
-| `npm run generate:flux2-spark`               | Distilled Klein 4B on DGX Spark CUDA         |
+| `npm run generate:flux2-cuda`                | Distilled Klein 4B on Spark / RTX 5090 CUDA  |
 | `npm run generate:sd2`                       | SD2.x text-to-image                         |
 | `npm run generate:sd3`                       | SD3 text-to-image                           |
 | `npm run generate:sdxl`                      | SDXL text-to-image                          |
@@ -162,9 +167,9 @@ Downloads are resumable where supported by the script.
 
 Outputs are written to `packages/diffusion-cpp/output/`.
 
-### Distilled FLUX.2 Klein 4B on DGX Spark
+### Distilled FLUX.2 Klein 4B on DGX Spark and RTX 5090
 
-`npm run generate:flux2-spark` uses four Euler steps, `cfg_scale: 1`,
+`npm run generate:flux2-cuda` uses four Euler steps, `cfg_scale: 1`,
 `guidance: 1`, and the engine's automatic FLUX.2 noise schedule. The fields
 have separate meanings: `cfg_scale` controls text classifier-free guidance,
 while `guidance` supplies the model's optional guidance embedding. Klein 4B
@@ -172,36 +177,48 @@ has no guidance embedding, so text CFG is the field that must be set to 1.
 The existing generic image example's 20-step settings are not the distilled
 four-step recipe.
 
-The Spark example selects `cuda0`, keeps weights resident there, enables
-diffusion flash attention, and sets `vae_conv_direct: false`. On GB10, the
+The CUDA example selects `cuda0`, keeps weights resident there, enables
+diffusion flash attention, and sets `vae_conv_direct: false`. On both GPUs, the
 existing im2col/matrix-multiplication path substantially reduces VAE decode
 time compared with direct convolution. This trades additional graph memory
 for lower latency; use the measured recipe when memory permits.
 
-On the tested GB10 build (four steps, diffusion Q8_0, Qwen3 Q4_K_M), mean
-request-to-returned-PNG latency across three prompts, two seeds and two
-repeats per resolution was 2.86 s at 864×480 and 7.39 s at 1024×1024, compared
-with 12.57 s and 32.98 s using direct VAE convolution. Warmups and model
-loading are excluded from those means. The gain is approximately 4.4× for
-this suite; it is not a denoising-only rate or a sub-second guarantee.
+With four steps, diffusion Q8_0 and Qwen3 Q4_K_M, measured mean
+request-to-returned-PNG latency was:
 
-| Native output size | Direct VAE, mean ± SD | Im2col VAE, mean ± SD | Speedup |
-| --- | ---: | ---: | ---: |
-| 864×480 | 12.574 ± 0.055 s | 2.865 ± 0.005 s | 4.39× |
-| 1024×1024 | 32.981 ± 0.075 s | 7.392 ± 0.010 s | 4.46× |
+| GPU | Native output size | Direct VAE, mean ± SD | Im2col VAE, mean ± SD | Speedup |
+| --- | --- | ---: | ---: | ---: |
+| DGX Spark GB10 | 864×480 | 12.574 ± 0.055 s | 2.865 ± 0.005 s | 4.39× |
+| DGX Spark GB10 | 1024×1024 | 32.981 ± 0.075 s | 7.392 ± 0.010 s | 4.46× |
+| RTX 5090 | 864×480 | 2.835 ± 0.006 s | 0.590 ± 0.002 s | 4.81× |
+| RTX 5090 | 1024×1024 | 7.383 ± 0.035 s | 1.404 ± 0.003 s | 5.26× |
 
-These measurements used diffusion-cpp 0.28.1, engine commit
+Each cell summarizes 12 formal requests: three prompts, seeds 0/43, two
+repeats, following a separate warmup at each resolution. Loading and
+warmups are excluded. Timers include fresh prompt encoding through returned
+PNG, and exclude subsequent sample-file writes. Both variants use the same
+settings and model files on each machine, changing only `vae_conv_direct`.
+
+The Spark measurements used diffusion-cpp 0.28.1, engine commit
 `8b3efc68c64befbf01ccc2ac9816ee1cde4dda4f`, ggml commit
 `9a7d2b36e96a198c1c67c013cafcde4e4c2c60eb`, LLVM 22, CUDA 13.3, and driver
-580.178.04 on one DGX Spark. Each cell summarizes 12 formal requests: three
-prompts, seeds 0/43, two repeats, following a separate warmup at each
-resolution. Request timers include fresh prompt encoding through returned
-PNG, and exclude subsequent sample-file writes. The published build uses
-the pinned CI toolchain; these are measurements of the tested build rather
-than a guarantee for every release or prompt.
+580.178.04 on one DGX Spark.
 
-The native VAE alternatives produced 24 matched image pairs with worst
-RGB RMSE 0.295 on the 0–255 scale.
+The RTX 5090 measurements used one 32 GB GPU, diffusion-cpp 0.29.2, engine
+commit `886c66f60aca623145da6ec6261b02e5728ac109`, ggml commit
+`9f94f330ac196e0a2e3176e798b36226b22091a5`, Clang 20.1.8, statically linked
+libc++ 19, CUDA 13.3.73, and driver 595.71.05. The Linux x64 source build
+contains native SM120a cubins. A second 5090 was idle and was not used.
+At 1024×1024, mean VAE decode dropped from 6.253 s to 0.276 s while
+denoising stayed approximately 0.95 s.
+
+The published build uses the pinned CI toolchain. These measurements use
+different source/toolchain revisions across machines, so they establish
+the within-machine VAE speedup rather than a controlled hardware ranking
+or a guarantee for every release or prompt.
+
+Each machine produced 24 matched image pairs. Worst RGB RMSE on the 0–255
+scale was 0.295 on Spark and 0.298 on RTX 5090.
 
 Download the revision-pinned bundle with
 `./scripts/download-model-flux2-ingredients.sh`; that script requires an
@@ -209,11 +226,14 @@ authorized `HF_TOKEN` for the VAE. Set `FLUX_MODELS_DIR` when assets are in a
 different directory. H3's Qwen3-VL encoder is not the FLUX.2 Qwen3-4B encoder.
 
 ```bash
-FLUX_WIDTH=864 FLUX_HEIGHT=480 npm run generate:flux2-spark
-FLUX_WIDTH=1024 FLUX_HEIGHT=1024 FLUX_IMAGES=3 npm run generate:flux2-spark
+FLUX_WIDTH=864 FLUX_HEIGHT=480 npm run generate:flux2-cuda
+FLUX_WIDTH=1024 FLUX_HEIGHT=1024 FLUX_IMAGES=3 npm run generate:flux2-cuda
 ```
 
-`FLUX_PROMPT`, `FLUX_SEED`, and `FLUX_OUTPUT_DIR` customize the requests.
+The same commands work on either machine; `generate:flux2-spark` remains
+an alias. On a multi-GPU host, `CUDA_VISIBLE_DEVICES=0` limits the example
+to the first card. `FLUX_PROMPT`, `FLUX_SEED`, and `FLUX_OUTPUT_DIR`
+customize the requests.
 `FLUX_IMAGES` issues sequential requests through one loaded model; every
 request freshly encodes its prompt. The example logs model loading,
 request-to-returned-PNG latency, progress, and native phase statistics, and
@@ -899,7 +919,7 @@ The projection runs in the calling process and shares its engine state: the GPU 
 - On Linux the shipped prebuild must not hard-link any GPU loader
   (`libvulkan`/`libOpenCL`/`libcuda`/`libcudart`) — an integration test asserts
   this. GPU dependencies belong to the dynamically loaded backend modules.
-  Linux ARM64 prebuilds must ship both CUDA and Vulkan modules. A custom
+  Linux ARM64 and x64 prebuilds must ship both CUDA and Vulkan modules. A custom
   source build using a different backend layout can opt out of this shipped
   layout check with `QVAC_SKIP_PREBUILD_LINK_CHECK=true`.
 

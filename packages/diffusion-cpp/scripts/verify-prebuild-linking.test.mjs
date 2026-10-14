@@ -51,36 +51,33 @@ function fixture(t, { arch = 'arm64', cuda = ['libcudart.so.13'], addon = ['libc
   return { status: result.status, output: result.stdout + result.stderr }
 }
 
-test('ARM64 release ships CUDA and Vulkan without hard addon GPU dependencies', (t) => {
-  const result = fixture(t)
-  assert.equal(result.status, 0, result.output)
-})
+for (const arch of ['arm64', 'x64']) {
+  test(`${arch} release ships CUDA and Vulkan without hard addon GPU dependencies`, (t) => {
+    const result = fixture(t, { arch })
+    assert.equal(result.status, 0, result.output)
+  })
 
-test('ARM64 release fails when the CUDA module is missing', (t) => {
-  const result = fixture(t, { cuda: null })
-  assert.equal(result.status, 1)
-  assert.match(result.output, /CUDA DL backend module missing/)
-})
+  test(`${arch} release fails when the CUDA module is missing`, (t) => {
+    const result = fixture(t, { arch, cuda: null })
+    assert.equal(result.status, 1)
+    assert.match(result.output, /CUDA DL backend module missing/)
+  })
 
-test('ARM64 release fails when the CUDA module does not link its runtime', (t) => {
-  const result = fixture(t, { cuda: ['libc.so.6'] })
-  assert.equal(result.status, 1)
-  assert.match(result.output, /CUDA module does not link libcudart/)
-})
+  test(`${arch} release fails when the CUDA module does not link its runtime`, (t) => {
+    const result = fixture(t, { arch, cuda: ['libc.so.6'] })
+    assert.equal(result.status, 1)
+    assert.match(result.output, /CUDA module does not link libcudart/)
+  })
 
-test('ARM64 release fails when CUDA depends on an external C++ runtime', (t) => {
-  const result = fixture(t, { cuda: ['libcudart.so.13', 'libstdc++.so.6'] })
-  assert.equal(result.status, 1)
-  assert.match(result.output, /CUDA module depends on libstdc\+\+/)
-})
+  test(`${arch} release fails when CUDA depends on an external C++ runtime`, (t) => {
+    const result = fixture(t, { arch, cuda: ['libcudart.so.13', 'libstdc++.so.6'] })
+    assert.equal(result.status, 1)
+    assert.match(result.output, /CUDA module depends on libstdc\+\+/)
+  })
 
-test('ARM64 addon must stay loadable without CUDA installed', (t) => {
-  const result = fixture(t, { addon: ['libc.so.6', 'libcudart.so.13'] })
-  assert.equal(result.status, 1)
-  assert.match(result.output, /addon hard-links libcudart/)
-})
-
-test('x64 release retains Vulkan-only packaging', (t) => {
-  const result = fixture(t, { arch: 'x64', cuda: null })
-  assert.equal(result.status, 0, result.output)
-})
+  test(`${arch} addon must stay loadable without CUDA installed`, (t) => {
+    const result = fixture(t, { arch, addon: ['libc.so.6', 'libcudart.so.13'] })
+    assert.equal(result.status, 1)
+    assert.match(result.output, /addon hard-links libcudart/)
+  })
+}
