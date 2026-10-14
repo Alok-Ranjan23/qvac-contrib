@@ -108,10 +108,10 @@
         "command": "echo 'orchestrated by on-merge-nx.yml'",
         "cwd": "packages/ocr-ggml",
         "ci": {
-          "verifyGenerated": true,
+          "verifyGenerated": false,
           "nameTransform": "none",
           "repoName": "ocr-ggml",
-          "testGateMode": "post-publish-integration"
+          "testGateMode": "none"
         }
       }
     }

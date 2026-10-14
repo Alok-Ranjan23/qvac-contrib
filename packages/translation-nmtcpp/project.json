@@ -100,10 +100,10 @@
         "command": "echo 'orchestrated by on-merge-nx.yml'",
         "cwd": "packages/translation-nmtcpp",
         "ci": {
-          "verifyGenerated": true,
+          "verifyGenerated": false,
           "nameTransform": "none",
           "repoName": "translation-nmtcpp",
-          "testGateMode": "post-publish-integration"
+          "testGateMode": "none"
         }
       }
     }

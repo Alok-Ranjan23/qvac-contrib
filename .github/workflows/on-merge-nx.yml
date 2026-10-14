@@ -187,7 +187,7 @@ jobs:
             has_build=$(git show "${CONFIG_REF}:${pj}" | jq -r 'if .targets.build then "true" else "false" end')
 
             # Detect generated wrappers from package.json. An explicit false in
-            # trusted on-merge config opts out; speech only builds and publishes.
+            # trusted on-merge config opts out; speech, OCR and translation opt out.
             has_check=$(git show "${CONFIG_REF}:packages/${pkg}/package.json" 2>/dev/null \
               | jq -r 'if .scripts["check:generated"] then "true" else "false" end' || echo false)
 
@@ -623,7 +623,7 @@ jobs:
       rows: ${{ steps.gate.outputs.rows }}
     steps:
       # Per package: only rows opting into post-publish integration reach this
-      # gate. GPR additionally requires postIntegrationOnGpr; speech opts out.
+      # gate. GPR additionally requires postIntegrationOnGpr.
       - id: gate
         shell: bash
         env:

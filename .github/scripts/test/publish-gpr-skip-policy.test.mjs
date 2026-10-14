@@ -264,7 +264,7 @@ for (const slug of ['ocr-ggml', 'translation-nmtcpp']) {
 
     // The consolidated gate supports a per-package GPR opt-in, so inspect this
     // slug's policy rather than requiring publish-gpr to be absent from the
-    // generic gate. Speech packages opt out of post-publish testing entirely.
+    // generic gate. OCR and translation now opt out for both npm and GPR.
     if (carrier === CONSOLIDATED) {
       assert.match(
         gate,
@@ -273,6 +273,7 @@ for (const slug of ['ocr-ggml', 'translation-nmtcpp']) {
       )
       const ci =
         JSON.parse(read(`packages/${slug}/project.json`)).targets?.['on-merge']?.options?.ci ?? {}
+      assert.equal(ci.testGateMode, 'none', `${slug}: neither npm nor GPR should launch integration tests`)
       assert.notEqual(
         ci.postIntegrationOnGpr,
         true,

@@ -151,9 +151,10 @@ Packages with bespoke flows set `carveOut: true` on the relevant target. `nx-pro
 ## Mobile
 
 Mobile tests use the per-package `integration-mobile-test-<pkg>.yml` workflows.
-Speech publishing in `on-merge-nx.yml` does not launch desktop integration or
-mobile E2E tests: `asr-ggml`, `tts-ggml`, `bci-whispercpp`, `decoder-audio`, and
-`audiogen-ggml` set `on-merge.options.ci.testGateMode` to `none` and
+Speech, OCR and translation publishing in `on-merge-nx.yml` does not launch
+desktop integration or mobile E2E tests: `asr-ggml`, `tts-ggml`, `bci-whispercpp`,
+`decoder-audio`, `audiogen-ggml`, `ocr-ggml` and `translation-nmtcpp` set
+`on-merge.options.ci.testGateMode` to `none` and
 `verifyGenerated` to `false`, so publishing also skips generated-wrapper checks.
 The workflow reads this policy from the trusted default branch. Older release
 branches need the updated workflow to honor the wrapper-check opt-out.

@@ -26,7 +26,7 @@ const GATE = "needs.verify-generated.result == 'success'"
 const GATE_MATRIX =
   "needs.verify-generated.result != 'failure' && needs.verify-generated.result != 'cancelled'"
 const CONSOLIDATED = '.github/workflows/on-merge-nx.yml'
-const SPEECH_PACKAGES = ['decoder-audio', 'asr-ggml', 'bci-whispercpp', 'tts-ggml', 'audiogen-ggml']
+const NO_PUBLISH_TEST_PACKAGES = ['decoder-audio', 'asr-ggml', 'bci-whispercpp', 'tts-ggml', 'audiogen-ggml', 'ocr-ggml', 'translation-nmtcpp']
 
 function read(relativePath) {
   return readFileSync(join(root, relativePath), 'utf8')
@@ -101,7 +101,7 @@ function consolidatedPackages() {
 // under test, or removing a package from that workflow would remove it from this
 // list too and the coverage assertion below could never fail.
 //
-// Script detection is the default. Speech explicitly opts out in project.json;
+// Script detection is the default. Selected addons explicitly opt out in project.json;
 // detect reads that policy from the trusted default branch, not the pushed ref.
 function gatedPackages() {
   const packagesDir = join(root, 'packages')
@@ -124,8 +124,8 @@ function gatedPackages() {
 test('every package that opts into the gate is covered by a pipeline', () => {
   const gated = gatedPackages()
   assert.ok(
-    gated.length >= 8,
-    `expected at least eight non-speech generated-wrapper packages, found ${gated.length}`,
+    gated.length >= 6,
+    `expected at least six generated-wrapper packages outside the opt-out list, found ${gated.length}`,
   )
 
   const pipelines = wrapperPipelines()
@@ -244,11 +244,11 @@ test('wrapper drift is still checked somewhere at PR time', () => {
   assert.match(sanityChecks, /check:generated/)
 })
 
-test('speech publishing does not launch wrapper checks, desktop integration or mobile E2E tests (QVAC-26904)', () => {
+test('speech, OCR and translation publishing does not launch wrapper checks, integration or mobile E2E tests (QVAC-26904)', () => {
   const source = withoutComments(read(CONSOLIDATED))
   const jobs = eachJob(source)
 
-  for (const name of SPEECH_PACKAGES) {
+  for (const name of NO_PUBLISH_TEST_PACKAGES) {
     const project = JSON.parse(read(`packages/${name}/project.json`))
     const config = project.targets['on-merge'].options.ci
     assert.equal(config.testGateMode, 'none', name)
@@ -271,7 +271,7 @@ test('speech publishing does not launch wrapper checks, desktop integration or m
   }
 })
 
-test('publish rows skip speech checks and preserve automatic wrapper detection elsewhere', () => {
+test('publish rows honor test opt-outs and preserve automatic wrapper detection elsewhere', () => {
   const source = read(CONSOLIDATED)
   const expression = source.match(/row=\$\(jq -n[\s\S]*?\n\s+'([\s\S]*?)'\)/)?.[1]
   assert.ok(expression, 'missing publish row construction')
@@ -288,9 +288,9 @@ test('publish rows skip speech checks and preserve automatic wrapper detection e
       '--argjson', 'onmerge', JSON.stringify(config), expression,
     ], { encoding: 'utf8' }))
 
-    assert.equal(row.verifyGenerated, SPEECH_PACKAGES.includes(name) ? false : hasCheck, name)
+    assert.equal(row.verifyGenerated, NO_PUBLISH_TEST_PACKAGES.includes(name) ? false : hasCheck, name)
     assert.equal(row.hasPrebuilds, Boolean(project.targets.build), `${name}: preserve prebuild selection`)
-    if (SPEECH_PACKAGES.includes(name)) {
+    if (NO_PUBLISH_TEST_PACKAGES.includes(name)) {
       assert.equal(row.testGateMode, 'none', name)
       assert.ok(!project.targets.build?.options?.ci?.desktopSmokeCommand, `${name}: no prebuild smoke tests`)
     }

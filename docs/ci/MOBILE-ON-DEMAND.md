@@ -759,8 +759,9 @@ and free.
 
 ## Publishing and reusable workflows
 
-Speech publishing in `on-merge-nx.yml` does not launch mobile E2E or desktop
-integration tests. ASR, TTS, BCI, decoder-audio, and AudioGen opt out of
+Speech, OCR and translation publishing in `on-merge-nx.yml` does not launch
+mobile E2E or desktop integration tests. ASR, TTS, BCI, decoder-audio, AudioGen,
+OCR and translation opt out of
 post-publish testing and generated-wrapper checks in their package CI
 configuration; on-merge builds and publishes without running their tests.
 The publish workflow has no speech mobile callers.
