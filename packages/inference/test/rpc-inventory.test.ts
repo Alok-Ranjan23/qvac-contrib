@@ -166,7 +166,7 @@ test('RPC inventory reads native device count and memory over fragmented TCP res
   t.alike(logs.warnings, [], 'compatible inventory does not warn')
 })
 
-for (const version of [108, 109]) {
+for (const version of [108, 109, 111]) {
   for (const qpn of [0, 0x123456]) {
     test(`RPC ${version} inventory reports RDMA availability for QPN ${qpn}`, async (t) => {
       await using server = await endpoint((command, payload) => {
@@ -244,6 +244,7 @@ test('RPC inventory timeout and cancellation close stalled queries', async (t) =
 test('RPC inventory warns once with the endpoint and received and supported versions', async (t) => {
   for (const [major, minor] of [
     [110, 0],
+    [111, 1],
     [109, 1],
     [108, 1]
   ]) {
@@ -266,7 +267,7 @@ test('RPC inventory warns once with the endpoint and received and supported vers
       url: server.url,
       reason: 'unsupported protocol version',
       receivedVersion: `${major}.${minor}.7`,
-      supportedVersions: '108.0.x, 109.0.x',
+      supportedVersions: '108.0.x, 109.0.x, 111.0.x',
       receivedHelloBytes: '28',
       expectedHelloBytes: 28
     })
@@ -291,7 +292,7 @@ test('RPC inventory warns for short and oversized HELLO frames before parsing in
       t.is(details.url, server.url)
       t.is(details.receivedHelloBytes, String(length))
       t.is(details.expectedHelloBytes, 28)
-      t.is(details.supportedVersions, '108.0.x, 109.0.x')
+      t.is(details.supportedVersions, '108.0.x, 109.0.x, 111.0.x')
       t.is(details.receivedVersion, splitAt.length === 0 && length >= 3 ? '110.0.0' : 'unavailable')
       t.is(
         details.reason,
