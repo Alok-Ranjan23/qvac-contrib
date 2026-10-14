@@ -142,6 +142,43 @@ directory.
 
 ## Building for Different Platforms
 
+### DGX Spark CUDA
+
+For native Linux ARM64 builds on GB10, put the versioned LLVM executables on
+PATH so the Linux triplet resolves `clang` and `clang++`. Build CUDA cubins
+for SM121a and install the backend modules alongside the addon:
+
+```bash
+export PATH=/usr/lib/llvm-22/bin:/usr/local/cuda/bin:$PATH
+export CUDAHOSTCXX=/usr/lib/llvm-22/bin/clang++
+export CUDAARCHS=121a
+export VCPKG_ROOT=/path/to/vcpkg
+npm run build:ts
+bare-make generate -D SD_CUDA=ON -D CMAKE_CUDA_ARCHITECTURES=121a
+bare-make build
+bare-make install
+```
+
+`CUDAARCHS` also reaches the vcpkg ggml sub-build; the top-level architecture
+flag alone does not configure that separate build. The registry port searches
+`/usr/local/cuda/bin/nvcc` first, so verify the compiler it actually selects in
+the vcpkg logs and ggml `CMakeCache.txt`. The tested Spark toolchain uses LLVM
+22, libc++, CUDA 13.3, and driver 580.178.04. The Linux toolchain supplies
+nvcc's `-allow-unsupported-compiler` flag for the newer Clang host compiler.
+
+Ensure `libqvac-diffusion-ggml-cuda.so` is installed under
+`prebuilds/linux-arm64/qvac__diffusion-cpp/` and that `ldd` resolves its CUDA
+libraries. GPU selection and weight residency are independent; the Spark
+example explicitly sets both to `cuda0`. See the package README's Spark
+recipe for assets and generation commands.
+
+The native generation benchmark ran on Bare runtime 1.31.0. Current unit-test
+dependencies include `bare-dns`, which requires runtime 1.33.0 or newer;
+the package unit/script tests passed on runtime 1.35.0. Use a separate local
+tools installation when upgrading the test runtime on a machine with
+unrelated Bare services. Verify `bare --version` rather than assuming the
+npm launcher package version equals the runtime version.
+
 Native builds (building for the same platform you're running on) work out of the box.
 
 Cross-compilation:
