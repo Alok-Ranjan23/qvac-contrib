@@ -54,6 +54,10 @@ export interface PrebuildLocation {
 }
 
 const PREBUILDS_DIR = 'prebuilds'
+// Platform packages published before the one-line `binding.js` nest the
+// prebuild in an inner `addon/` package. Addon versions the SDK still
+// depends on ship that layout.
+const LEGACY_PLATFORM_ADDON_DIR = 'addon'
 
 /**
  * Where an addon's `<host>` prebuild may live:
@@ -64,7 +68,8 @@ const PREBUILDS_DIR = 'prebuilds'
  *   map names a platform package for this host. The meta's own `prebuilds/`
  *   does not count: its `binding.js` is `require('#host-addon')`, so the
  *   platform package is the only thing loaded. Empty when that package is not
- *   installed.
+ *   installed. An older platform package's `<platformRoot>/addon/prebuilds/<host>`
+ *   is searched too when it exists.
  */
 export async function resolvePrebuildLocations(
   addon: NativeAddon,
@@ -93,7 +98,9 @@ export async function resolvePrebuildLocations(
   ) {
     location.mismatchedVersion = installedVersion
   }
-  return [location]
+  const legacyHostDir = path.join(platformRoot, LEGACY_PLATFORM_ADDON_DIR, PREBUILDS_DIR, host)
+  if (!(await isDirectory(legacyHostDir))) return [location]
+  return [location, { ...location, hostDir: legacyHostDir }]
 }
 
 /**
@@ -242,6 +249,14 @@ async function findInstalledPackage(fromDir: string, packageName: string): Promi
     const parent = path.dirname(dir)
     if (parent === dir) return null
     dir = parent
+  }
+}
+
+async function isDirectory(dir: string): Promise<boolean> {
+  try {
+    return (await fsp.stat(dir)).isDirectory()
+  } catch {
+    return false
   }
 }
 

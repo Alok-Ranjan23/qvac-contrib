@@ -1184,6 +1184,33 @@ describe('checkPrebuilds with per-platform prebuild packages', () => {
     })
   })
 
+  it("accepts an older platform package's inner addon/ prebuild", async () => {
+    await withTempDir(async (dir) => {
+      const packageRoot = writePackageJson(dir, 'node_modules/@qvac/tts-ggml', splitTtsManifest())
+      const platformRoot = writePlatformPackage(dir, 'node_modules/@qvac/tts-ggml-linux-x64', {
+        name: '@qvac/tts-ggml-linux-x64',
+        hosts: []
+      })
+      writePrebuild(path.join(platformRoot, 'addon'), 'linux-x64')
+
+      const locations = await resolvePrebuildLocations(metaAddon(packageRoot), 'linux-x64')
+      assert.deepEqual(locations, [
+        {
+          hostDir: path.join(platformRoot, 'prebuilds', 'linux-x64'),
+          platformPackage: '@qvac/tts-ggml-linux-x64'
+        },
+        {
+          hostDir: path.join(platformRoot, 'addon', 'prebuilds', 'linux-x64'),
+          platformPackage: '@qvac/tts-ggml-linux-x64'
+        }
+      ])
+      assert.deepEqual(
+        await checkPrebuilds({ addon: metaAddon(packageRoot), hosts: ['linux-x64'] }),
+        []
+      )
+    })
+  })
+
   it('follows the meta package symlink into a pnpm virtual store to find its platform package', async () => {
     await withTempDir(async (dir) => {
       // pnpm's isolated layout: the project's node_modules/@qvac/tts-ggml is a
