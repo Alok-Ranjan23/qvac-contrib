@@ -79,7 +79,7 @@ jobs:
     continue-on-error: ${{ matrix.allow_failure }}
     runs-on: ${{ matrix.runner }}
     environment: release
-    name: test-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.force_vulkan == 'true' && '-vulkan' || '' }}
+    name: test-${{ matrix.label }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       WORKDIR: packages/llm-llamacpp
@@ -88,6 +88,7 @@ jobs:
       # field is the empty string, which hides every CUDA device like -1.
       FORCE_VULKAN: ${{ matrix.force_vulkan || 'false' }}
     permissions:
+      actions: read
       contents: read
       packages: read
       id-token: write
@@ -101,64 +102,28 @@ jobs:
         # `linux-arm64` entries (ubuntu 22 vs 24) collided on upload
         # and `actions/download-artifact` silently dropped one of each,
         # hiding GPU data in the combined report.
+        # Temporary PR #5121 validation: fit.test.js alone in a fresh process on
+        # Windows. Control uses the published 0.61.0 prebuild (no fix); the fix
+        # leg uses PR #5121's win32-x64 prebuild from run 38724321592.
         include:
-          - os: ubuntu-22.04
-            platform: linux
-            arch: x64
-            runner: ${{ needs.runner_names.outputs.linux_ubuntu2204_x64_gpu }}
-            allow_failure: true
-            label: linux-x64-u22-gpu
-          - os: ubuntu-24.04
-            platform: linux
-            arch: x64
-            runner: ${{ needs.runner_names.outputs.linux_ubuntu2404_x64_gpu }}
-            timeout_minutes: 480
-            allow_failure: false
-            label: linux-x64-u24-gpu
-          # QVAC-23763: same NVIDIA box, Vulkan half. The entry above runs CUDA.
-          - os: ubuntu-24.04
-            platform: linux
-            arch: x64
-            runner: ${{ needs.runner_names.outputs.linux_ubuntu2404_x64_gpu }}
-            timeout_minutes: 480
-            force_vulkan: 'true'
-            allow_failure: false
-            label: linux-x64-u24-gpu-vulkan
-          - os: ubuntu-24.04-arm
-            platform: linux
-            arch: arm64
-            runner: ${{ needs.runner_names.outputs.ubuntu_2404_arm }}
-            no_gpu: 'true'
-            allow_failure: true
-            label: linux-arm64-u24
-          - os: ubuntu-22.04-arm
-            platform: linux
-            arch: arm64
-            runner: ${{ needs.runner_names.outputs.ubuntu_2204_arm }}
-            no_gpu: 'true'
-            allow_failure: true
-            label: linux-arm64-u22
-          - os: macos-15-xlarge
-            platform: darwin
-            arch: arm64
-            runner: ${{ needs.runner_names.outputs.macos_arm64_gpu }}
-            allow_failure: true
-            label: darwin-arm64
-          # Smoke check for the x64 prebuild; darwin-arm64 runs the full suite.
-          - os: macos-15-large
-            platform: darwin
-            arch: x64
-            runner: ${{ needs.runner_names.outputs.macos_15_large }}
-            smoke_timeout_minutes: 45
-            allow_failure: true
-            label: darwin-x64
-            single_test: test/integration/api-behavior.test.js
           - os: windows-2025
             platform: win32
             arch: x64
             runner: ${{ needs.runner_names.outputs.win_2025_x64_gpu }}
+            smoke_timeout_minutes: 60
             allow_failure: true
-            label: win32-x64
+            label: win32-x64-control-npm-0.61.0
+            single_test: test/integration/fit.test.js
+            prebuild_source: npm
+          - os: windows-2025
+            platform: win32
+            arch: x64
+            runner: ${{ needs.runner_names.outputs.win_2025_x64_gpu }}
+            smoke_timeout_minutes: 60
+            allow_failure: false
+            label: win32-x64-fix-pr5121
+            single_test: test/integration/fit.test.js
+            prebuild_source: pr-artifact
 
     steps:
       - name: Setup Node.js
@@ -264,8 +229,17 @@ jobs:
           echo "Prebuilds downloaded from npm successfully"
           ls -la prebuilds/
 
+      - name: "Download PR 5121 win32-x64 prebuild"
+        if: ${{ matrix.prebuild_source == 'pr-artifact' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # 8.0.1
+        with:
+          name: prebuild-llm-llamacpp-win32-x64
+          run-id: 38724321592
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ env.WORKDIR }}/prebuilds
+
       - name: Download prebuilds from package (Windows)
-        if: ${{ inputs.prebuild_package && matrix.platform == 'win32' }}
+        if: ${{ inputs.prebuild_package && matrix.platform == 'win32' && matrix.prebuild_source != 'pr-artifact' }}
         working-directory: ${{ env.WORKDIR }}
         shell: powershell
         run: |
@@ -302,6 +276,14 @@ jobs:
 
           echo "Prebuilds downloaded from npm successfully"
           Get-ChildItem prebuilds/
+
+      - name: Show placed win32-x64 prebuild
+        if: ${{ matrix.platform == 'win32' }}
+        working-directory: ${{ env.WORKDIR }}
+        shell: powershell
+        run: |
+          Get-ChildItem -Recurse prebuilds | Select-Object FullName, Length
+          Get-FileHash prebuilds/win32-x64/qvac__llm-llamacpp.bare -Algorithm SHA256
 
       - name: Linux - install dependencies
         if: matrix.os == 'ubuntu-22.04-arm' || matrix.os == 'ubuntu-24.04-arm'
