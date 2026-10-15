@@ -17,6 +17,7 @@
 #include <ggml-backend.h>
 #include <ggml-rpc.h>
 #include <js.h>
+#include <qvac-addon/fabric-bind.h>
 #include <qvac-fabric.h>
 #include <uv.h>
 
@@ -757,12 +758,10 @@ js_value_t* stopServer(js_env_t* env, js_callback_info_t* info) try {
 }
 
 js_value_t* rpcServerExports(js_env_t* env, js_value_t* target) {
-  // Windows delay-loads qvac__fabric-<host>@0.bare and resolves it through Bare's
-  // addon registry, which only answers while Bare is loading or initializing
-  // an addon on the calling thread. The first fabric call otherwise happens on
-  // the start worker thread and fails with 0xC06D007E, so resolve fabric here.
-  // The loader keeps the resolved module for every later call.
-  static_cast<void>(ggml_backend_reg_count());
+  if (!qvacAddonBindFabric()) {
+    js_throw_error(env, nullptr, "failed to bind " QVAC_FABRIC_MODULE_NAME);
+    return nullptr;
+  }
 
 // Native export registration is intentionally expressed as the same compact
 // macro used by the neighboring Bare addons.
