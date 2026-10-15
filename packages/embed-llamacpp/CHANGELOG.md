@@ -8,6 +8,8 @@
   and avoiding continuous CPU busy-waiting during GPU-offloaded embedding.
   Explicit `poll` and `poll-batch` settings remain supported
   ([#5087](https://github.com/tetherto/qvac/pull/5087)).
+- The `qvac-lib-inference-addon-cpp` dependency floor is now `1.5.0`, so its
+  headers provide the libuv declarations required by addon builds.
 
 ## [0.43.1] - 2026-09-30
 
