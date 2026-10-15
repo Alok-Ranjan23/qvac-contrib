@@ -4,6 +4,7 @@ import { createExecutor, type TestDefinition } from '@qvac/test-suite'
 import { createStepBindings } from '../shared/step-bindings.js'
 import { profiler } from '@qvac/sdk'
 import * as fs from 'node:fs'
+import { spawn as diagSpawn } from 'node:child_process'
 import * as path from 'node:path'
 import { ResourceManager } from '../shared/resource-manager.js'
 import { collectTestDeps } from '../shared/collect-test-deps.js'
@@ -83,6 +84,29 @@ function readJsonConfig(configPath: string) {
 }
 
 // Exercises registryDownloadMaxRetries + registryStreamTimeoutMs end-to-end (see config-tests.ts).
+// TEMP DIAGNOSTIC (tmp-qvac-26970-win-diag): extra env for the worker, and a GPU
+// memory sampler so the log shows whether device memory fills before a crash.
+const DIAG_WORKER_ENV: Record<string, string> = {}
+function startDiagnostics() {
+  for (const [key, value] of Object.entries(DIAG_WORKER_ENV)) process.env[key] = value
+  console.log(`[diag] worker env ${JSON.stringify(DIAG_WORKER_ENV)}`)
+  if (process.platform !== 'win32') return
+  try {
+    const sampler = diagSpawn(
+      'nvidia-smi',
+      ['--query-gpu=timestamp,memory.used,memory.total', '--format=csv,noheader', '-lms', '500'],
+      { stdio: ['ignore', 'pipe', 'pipe'] }
+    )
+    sampler.stdout?.on('data', (chunk: Buffer) => {
+      for (const line of chunk.toString().split('\n')) if (line.trim()) console.log(`[gpu-mem] ${line.trim()}`)
+    })
+    sampler.on('error', (error) => console.log(`[gpu-mem] sampler error ${error.message}`))
+    process.on('exit', () => sampler.kill())
+  } catch (error) {
+    console.log(`[gpu-mem] sampler failed ${String(error)}`)
+  }
+}
+
 function ensureDesktopE2EConfig() {
   const fixturePath = path.resolve(process.cwd(), 'fixtures/qvac.config.e2e.json')
   const existingPath = process.env['QVAC_CONFIG_PATH']
@@ -97,7 +121,10 @@ function ensureDesktopE2EConfig() {
     : []
   const desktopConfig = {
     ...mergedConfig,
-    plugins: Array.from(new Set([...configuredPlugins, '@qvac/sdk/audiogen-ggml/plugin']))
+    plugins: Array.from(new Set([...configuredPlugins, '@qvac/sdk/audiogen-ggml/plugin'])),
+    // TEMP DIAGNOSTIC (tmp-qvac-26970-win-diag): native debug logs to the console.
+    loggerLevel: 'debug',
+    loggerConsoleOutput: true
   }
   const generatedPath = path.resolve(process.cwd(), 'qvac.config.e2e.generated.json')
 
@@ -120,6 +147,7 @@ function resolveBatchAttachmentPath(inputPath: string) {
 }
 
 export async function bootstrap(filteredTests?: TestDefinition[]) {
+  startDiagnostics()
   ensureDesktopE2EConfig()
 
   // `filteredTests` (when present) is the producer's post-filter test list
