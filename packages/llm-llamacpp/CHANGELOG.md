@@ -1,10 +1,21 @@
 # Changelog
 
+## [0.55.2] - 2026-10-15
+
+### Fixed
+
+- The Fabric-owned GGML threadpools now default to `poll=0`, matching
+  `llama-server` and avoiding continuous CPU busy-waiting during GPU-offloaded
+  inference. Explicit `poll` and `poll-batch` settings remain supported
+  ([#5086](https://github.com/tetherto/qvac/pull/5086)).
+- The `qvac-lib-inference-addon-cpp` dependency floor is now `1.5.0`, so its
+  headers provide the libuv declarations required by addon builds.
+
 ## [0.55.1] - 2026-09-30
 
 ### Changed
 
-- `@qvac/fabric` dependency bumped `^0.18.0` -> `^0.19.0`, which carries
+- `@qvac/fabric` dependency bumped `^0.18.0` -> `0.19.0`, which carries
   `qvac-fabric` `10549.4.0` -> `10549.5.0` (CUDA and Metal fusion fixes, MoE
   expert caching defaulting to CUDA only, GLM-5 Next support). This package
   consumes the shared runtime via npm rather than building the vcpkg port, so
