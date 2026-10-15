@@ -1,4 +1,5 @@
 #include <bare.h>
+#include <ggml.h>
 
 #include "../addon/AddonJs.hpp"
 
@@ -8,6 +9,8 @@ bool registerBindings(js_env_t* env, js_value_t* exports);
 
 js_value_t*
 qvacLibInferLlamacppEmbedExports(js_env_t* env, js_value_t* exports) {
+  // Windows delay-loads fabric, which Bare resolves only on the JS thread.
+  static_cast<void>(ggml_type_size(GGML_TYPE_F32));
 
 // NOLINTBEGIN(cppcoreguidelines-macro-usage)
 #define V(name, fn)                                                            \
