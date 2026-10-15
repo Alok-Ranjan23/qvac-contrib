@@ -1,6 +1,7 @@
 import type { AbortSignal } from 'bare-abort-controller'
 import { fileURLToPath } from 'bare-url'
 import env from 'bare-env'
+import fs from 'bare-fs'
 import spawnBare from 'bare-runtime/spawn'
 import { arch, isAndroid, isBrowser, isIOS, platform } from 'which-runtime'
 
@@ -186,6 +187,26 @@ function parseResponse(line: string, stderrTail: Buffer): IsolatedFitResult {
   }
 }
 
+// TEMP DIAGNOSTIC (tmp-qvac-26970-win-diag): describe every path the fit reads.
+function diagDescribePaths(stage: string, probe: FitProbeRequest): void {
+  const request = ((probe as unknown as { request?: Record<string, unknown> }).request ?? {})
+  for (const [key, value] of Object.entries(request)) {
+    if (typeof value !== 'string' || !/[\\/]/.test(value)) continue
+    let detail: string
+    try {
+      const stat = fs.statSync(value)
+      const fd = fs.openSync(value, 'r')
+      const head = new Uint8Array(8)
+      const read = fs.readSync(fd, head, 0, 8, 0)
+      fs.closeSync(fd)
+      detail = `exists size=${stat.size} mtimeMs=${stat.mtimeMs} head=${Array.from(head.subarray(0, read), (b) => b.toString(16).padStart(2, '0')).join('')}`
+    } catch (error) {
+      detail = `ERROR ${error instanceof Error ? error.message : String(error)}`
+    }
+    console.error(`[fit-diag] ${stage} engine=${probe.engine} ${key}=${value} ${detail}`)
+  }
+}
+
 export function runIsolatedFit(
   probe: FitProbeRequest,
   options: RunIsolatedFitOptions = {}
@@ -204,6 +225,8 @@ export function runIsolatedFit(
       message: `Fit subprocess isolation is unavailable on ${runtime.platform}`
     })
   }
+
+  diagDescribePaths('before-spawn', probe)
 
   const spawnProcess =
     options.spawnProcess ??
@@ -282,6 +305,8 @@ export function runIsolatedFit(
     function settle(result: IsolatedFitResult): void {
       if (settled) return
       settled = true
+      console.error(`[fit-diag] result engine=${probe.engine} ${JSON.stringify(result).slice(0, 2000)}`)
+      diagDescribePaths('after-settle', probe)
       cleanup()
       resolve(result)
     }
