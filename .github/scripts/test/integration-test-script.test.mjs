@@ -61,13 +61,17 @@ function missingScriptsOf(pkg) {
 }
 
 function darwinX64TestScriptOf(pkg) {
-  const row = rowsOf(pkg).find((candidate) => candidate.platform === 'darwin' && candidate.arch === 'x64')
+  const row = rowsOf(pkg).find(
+    (candidate) => candidate.platform === 'darwin' && candidate.arch === 'x64'
+  )
   assert.ok(row, `${pkg} has no darwin-x64 integration row`)
   return row.testScript ?? DEFAULT_TEST_SCRIPT
 }
 
 function packagesRunningFullSuiteOnDarwinX64() {
-  return DARWIN_X64_SMOKE_PACKAGES.filter((pkg) => darwinX64TestScriptOf(pkg) === DEFAULT_TEST_SCRIPT)
+  return DARWIN_X64_SMOKE_PACKAGES.filter(
+    (pkg) => darwinX64TestScriptOf(pkg) === DEFAULT_TEST_SCRIPT
+  )
 }
 
 test('the workflow has integration run steps to check', () => {
@@ -76,12 +80,18 @@ test('the workflow has integration run steps to check', () => {
 
 test('every integration run step runs the row test script', () => {
   const steps = findRunSteps()
-  assert.deepEqual(namesOfStepsMatching(steps, (step) => !step.includes(TEST_SCRIPT_ENV)), [])
+  assert.deepEqual(
+    namesOfStepsMatching(steps, (step) => !step.includes(TEST_SCRIPT_ENV)),
+    []
+  )
 })
 
 test('no integration run step hardcodes the default test script', () => {
   const steps = findRunSteps()
-  assert.deepEqual(namesOfStepsMatching(steps, (step) => HARDCODED_DEFAULT_RUN.test(step)), [])
+  assert.deepEqual(
+    namesOfStepsMatching(steps, (step) => HARDCODED_DEFAULT_RUN.test(step)),
+    []
+  )
 })
 
 test('every declared integration script exists in its package manifest', () => {
@@ -90,4 +100,31 @@ test('every declared integration script exists in its package manifest', () => {
 
 test('bci-whispercpp and tts-ggml run a smoke script on darwin-x64, not the full suite', () => {
   assert.deepEqual(packagesRunningFullSuiteOnDarwinX64(), [])
+})
+
+test('TTS Linux GPU integration rows pin both CUDA and Vulkan', () => {
+  const gpuRows = rowsOf('tts-ggml').filter(
+    (row) => row.platform === 'linux' && row.arch === 'x64' && !row.noGpu
+  )
+  assert.ok(gpuRows.length > 0, 'TTS has no Linux GPU integration coverage')
+  const backends = gpuRows.map((row) => row.testEnv?.TTS_CPP_GPU_BACKEND)
+  assert.ok(
+    backends.every((backend) => ['cuda', 'vulkan'].includes(backend)),
+    'each GPU row must pin its backend'
+  )
+  assert.deepEqual([...new Set(backends)].sort(), ['cuda', 'vulkan'])
+})
+
+test('manual integration dispatch forwards the trusted config override', () => {
+  const orchestrator = readFileSync(join(root, '.github/workflows/on-pr-nx.yml'), 'utf8')
+  const integrationJob = orchestrator
+    .split('\n  run-integration-tests:\n')[1]
+    ?.split('\n  # Mobile integration tests')[0]
+  assert.ok(integrationJob, 'missing integration caller')
+  assert.ok(
+    integrationJob.includes(
+      "base-ref: ${{ github.event_name == 'workflow_dispatch' && inputs.config_ref_override || github.event.repository.default_branch }}"
+    ),
+    'only a trusted manual dispatch may override the integration config source'
+  )
 })
