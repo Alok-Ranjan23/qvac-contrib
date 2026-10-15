@@ -1,9 +1,12 @@
 #include <bare.h>
+#include <ggml.h>
 
 #include "../addon/AddonJs.hpp"
 
 js_value_t*
 qvacLibInferenceAddonLlamaExports(js_env_t* env, js_value_t* exports) {
+  // Windows delay-loads fabric, which Bare resolves only on the JS thread.
+  static_cast<void>(ggml_type_size(GGML_TYPE_F32));
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define V(name, fn)                                                            \
