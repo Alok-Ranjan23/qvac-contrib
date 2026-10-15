@@ -921,7 +921,7 @@ importers:
         specifier: ^0.48.0
         version: link:../embed-llamacpp
       '@qvac/ggml-rpc-server':
-        specifier: ^0.4.0
+        specifier: ^0.5.0
         version: link:../ggml-rpc-server
       '@qvac/langdetect-text':
         specifier: ^0.1.2
@@ -1662,7 +1662,7 @@ importers:
         specifier: ^0.1.1
         version: 0.1.1
       '@qvac/ggml-rpc-server':
-        specifier: ^0.4.0
+        specifier: ^0.5.0
         version: link:../ggml-rpc-server
       '@qvac/inference':
         specifier: ^0.21.0
