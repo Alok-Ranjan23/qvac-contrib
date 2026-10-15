@@ -86,6 +86,39 @@ for (const file of ['.github/workflows/cpp-tests-nx.yml', '.github/workflows/cpp
   })
 }
 
+test('reusable-prebuilds keys prebuild reuse on the build config as well as the native tree', () => {
+  const file = '.github/workflows/reusable-prebuilds.yml'
+  const body = runBody(step(file, 'Key the reuse marker on the build config'))
+  const keyFor = (inputs) => {
+    const directory = mkdtempSync(join(tmpdir(), 'reuse-key-'))
+    try {
+      const output = join(directory, 'output')
+      const result = spawnSync('bash', ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', body], {
+        encoding: 'utf8',
+        env: { ...process.env, NATIVE_HASH: 'abc123', BUILD_INPUTS: JSON.stringify(inputs), GITHUB_OUTPUT: output },
+      })
+      assert.equal(result.status, 0, result.stderr)
+      return readFileSync(output, 'utf8').match(/^reuse_key=(.+)$/m)[1]
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  }
+  const release = { workdir: 'packages/tts-ggml', 'include-cuda': false, 'platform-cmake-defines': '', ref: 'aaa', repository: 'tetherto/qvac' }
+  const key = keyFor(release)
+  assert.match(key, /^abc123-[0-9a-f]{16}$/)
+  assert.equal(keyFor({ ...release, ref: 'bbb', 'reuse-workflow-file': 'on-pr-nx.yml' }), key, 'a new head SHA alone keeps the key')
+  assert.notEqual(
+    keyFor({ ...release, 'include-cuda': true, 'platform-cmake-defines': 'linux-x64: -D ENABLE_CUDA=ON' }),
+    key,
+    'the default branch CUDA config gets its own key',
+  )
+
+  const source = readFileSync(join(root, file), 'utf8')
+  assert.match(step(file, 'Reuse prior prebuilds (no native change)'), /native-hash: \$\{\{ steps\.key\.outputs\.reuse_key \}\}/)
+  assert.match(step(file, 'Save prebuild reuse marker'), /native-hash: \$\{\{ needs\.detect-reuse\.outputs\.reuse_key \}\}/)
+  assert.match(source, /reuse_key: \$\{\{ steps\.key\.outputs\.reuse_key \}\}/)
+})
+
 for (const name of ['Verify Vulkan fallback selection', 'Verify explicit Vulkan override with CUDA visible']) {
   test(`integration-test-vla.yml "${name}" skips a tree without the backend-selection test`, () => {
     const body = runBody(step('.github/workflows/integration-test-vla.yml', name))
