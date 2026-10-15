@@ -2114,6 +2114,89 @@ importers:
         specifier: ^8.63.0
         version: 8.65.0(eslint@9.39.5(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
 
+  packages/turbovec-ggml:
+    dependencies:
+      '@qvac/fabric':
+        specifier: ^0.22.0
+        version: link:../fabric
+    devDependencies:
+      '@qvac/fabric-android-arm64':
+        specifier: 0.22.0
+        version: 0.22.0
+      '@qvac/fabric-ios':
+        specifier: 0.22.0
+        version: 0.22.0
+      '@types/node':
+        specifier: ^24.2.1
+        version: 24.13.3
+      bare-fs:
+        specifier: ^4.5.1
+        version: 4.7.4(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)
+      bare-os:
+        specifier: ^3.6.2
+        version: 3.9.3
+      bare-path:
+        specifier: ^3.0.0
+        version: 3.1.1
+      bare-process:
+        specifier: ^4.2.2
+        version: 4.5.1(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)
+      bare-url:
+        specifier: ^2.1.6
+        version: 2.5.4
+      brittle:
+        specifier: ^3.4.0
+        version: 3.19.1(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)(bare-events@2.9.1(bare-abort-controller@1.1.2))(bare-pipe@4.2.3(bare-abort-controller@1.1.2)(bare-buffer@3.6.2))(bare-tcp@2.5.3(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)(bare-pipe@4.2.3(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)))
+      cmake-bare:
+        specifier: ^1.9.0
+        version: 1.10.1
+      cmake-npm:
+        specifier: ^1.1.0
+        version: 1.1.2
+      cmake-vcpkg:
+        specifier: ^1.1.0
+        version: 1.2.0
+      eslint:
+        specifier: ^9.39.4
+        version: 9.39.5(jiti@2.7.0)(supports-color@8.1.1)
+      eslint-import-resolver-typescript:
+        specifier: ^4.4.5
+        version: 4.4.5(eslint-plugin-import@2.32.0)(eslint@9.39.5(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)
+      eslint-plugin-import:
+        specifier: ^2.32.0
+        version: 2.32.0(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3))(eslint-import-resolver-typescript@4.4.5)(eslint@9.39.5(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)
+      lunte:
+        specifier: ^1.8.4
+        version: 1.8.4(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)
+      prettier:
+        specifier: ^3.9.4
+        version: 3.9.6
+      prettier-config-holepunch:
+        specifier: ^2.0.0
+        version: 2.0.0(prettier@3.9.6)
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.63.0
+        version: 8.65.0(eslint@9.39.5(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3)
+    optionalDependencies:
+      '@qvac/fabric-darwin-arm64':
+        specifier: ^0.22.0
+        version: 0.22.0
+      '@qvac/fabric-darwin-x64':
+        specifier: ^0.22.0
+        version: 0.22.0
+      '@qvac/fabric-linux-arm64':
+        specifier: ^0.22.0
+        version: 0.22.0
+      '@qvac/fabric-linux-x64':
+        specifier: ^0.22.0
+        version: 0.22.0
+      '@qvac/fabric-win32-x64':
+        specifier: ^0.22.0
+        version: 0.22.0
+
   packages/vla-ggml:
     dependencies:
       '@qvac/error':
@@ -14625,7 +14708,7 @@ snapshots:
 
   '@types/readable-stream@4.0.24':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 24.13.3
 
   '@types/responselike@1.0.3':
     dependencies:
@@ -14647,7 +14730,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 24.13.3
 
   '@types/yargs-parser@21.0.3': {}
 
@@ -16303,7 +16386,7 @@ snapshots:
     dependencies:
       bare-buffer: 3.6.2
       bare-type: 1.1.0
-      bare-url: 2.5.4
+      bare-url: 2.4.6
       compact-encoding: 3.3.0
     transitivePeerDependencies:
       - react-native-b4a
