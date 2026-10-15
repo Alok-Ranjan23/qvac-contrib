@@ -83,7 +83,7 @@ async function resolveStateDir(explicit: string | undefined): Promise<string> {
  * with it. A leftover `.running` marker is that abort, observed on the next
  * launch, and it is promoted to `.crashed` so the same request skips native
  * rather than repeating the abort. `timeoutMs` has no meaning on this path,
- * since the native call blocks the thread until it returns.
+ * since an in-process fit cannot be stopped once it has started.
  */
 export async function runInProcessFit(
   probe: FitProbeRequest,
