@@ -485,12 +485,28 @@ parseSplitMode(std::unordered_map<std::string, std::string>& configFilemap) {
   return splitMode;
 }
 
+} // namespace
+
 BertModelSetup setupParams(
     const std::string& modelGgufPath,
     std::unordered_map<std::string, std::string> configFilemap) {
   BertModelSetup result{};
   common_params& params = result.params;
   result.ctxSizeConfigured = hasContextSizeConfig(configFilemap);
+
+  // Fabric's native GGML workers busy-wait at the upstream polling default,
+  // including while GPU-offloaded inference is running. Match llm-llamacpp's
+  // sleeping default while preserving explicit main and batch overrides.
+  params.cpuparams.poll = 0;
+  params.cpuparams_batch.poll = 0;
+  std::optional<std::string> explicitBatchPoll;
+  if (const auto iter = configFilemap.find("poll-batch");
+      iter != configFilemap.end()) {
+    explicitBatchPoll = iter->second;
+  } else if (const auto iter = configFilemap.find("poll_batch");
+             iter != configFilemap.end()) {
+    explicitBatchPoll = iter->second;
+  }
 
   // Override default params
   std::vector<std::string> configVector;
@@ -661,9 +677,15 @@ BertModelSetup setupParams(
         "Invalid configuration parameters.");
   }
 
+  // common_params_parse makes the batch role inherit the main role when its
+  // thread count is implicit, which can overwrite an explicit batch poll.
+  // Reapply the already-validated value; otherwise keep both pools aligned.
+  params.cpuparams_batch.poll = explicitBatchPoll.has_value()
+                                    ? std::stoul(*explicitBatchPoll)
+                                    : params.cpuparams.poll;
+
   return result;
 }
-} // namespace
 
 void BertModel::resolveShardPaths(
     GGUFShards& shards, const std::string& modelPath) {
