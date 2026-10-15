@@ -121,6 +121,11 @@ test('transformLlmConfig: placement and fit keys keep their kebab spelling', (t)
   t.is(result['fit-ctx'], '8192')
 })
 
+test('transformLlmConfig: cache_checkpoints is forwarded as a string', (t) => {
+  t.is(transformLlmConfig(makeConfig({ cache_checkpoints: 0 }))['cache_checkpoints'], '0')
+  t.is(transformLlmConfig(makeConfig({ cache_checkpoints: 2 }))['cache_checkpoints'], '2')
+})
+
 test('transformLlmConfig: moe-cache-mib and fit-target take their string forms', (t) => {
   t.is(transformLlmConfig(makeConfig({ 'moe-cache-mib': 'auto' }))['moe-cache-mib'], 'auto')
   t.is(transformLlmConfig(makeConfig({ 'fit-target': 512 }))['fit-target'], '512')

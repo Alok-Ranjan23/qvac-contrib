@@ -119,6 +119,15 @@ export const llmConfigBaseSchema = z.object({
     .boolean()
     .optional()
     .describe("Enable tool calling via the model's jinja chat template. Default false."),
+  cache_checkpoints: z
+    .number()
+    .int()
+    .min(0)
+    .max(1024)
+    .optional()
+    .describe(
+      'Prompt-cache checkpoints kept per sequence on hybrid / recurrent models (Qwen3.5, Jamba, DeepSeek V4) and sliding-window models (Gemma 3/4, gpt-oss), one per cached request at the end of its history (0–1024). Default 1, which serves the next turn and a regenerate; editing the user message k-th from the end without reprocessing the whole conversation needs `k + 1`. `0` disables them. The newest one is also saved in the `cacheKey` file, so a conversation reloaded in a new process continues from it. Ignored by other models.'
+    ),
   'cache-type-k': z
     .string()
     .optional()
