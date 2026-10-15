@@ -1,10 +1,19 @@
 # Changelog
 
+## [0.29.2] - 2026-10-15
+
+### Changed
+
+- Raise the `qvac-lib-inference-addon-cpp` minimum from `1.4.0` to `1.5.0` so
+  its public headers include `<uv.h>` directly after libjs stopped including it
+  transitively. No addon API change
+  ([#5103](https://github.com/tetherto/qvac/pull/5103)).
+
 ## [0.29.1] - 2026-09-30
 
 ### Changed
 
-- `@qvac/fabric` dependency bumped `^0.18.0` -> `^0.19.0`, which carries
+- `@qvac/fabric` dependency bumped `^0.18.0` -> `0.19.0`, which carries
   `qvac-fabric` `10549.4.0` -> `10549.5.0` (CUDA and Metal fusion fixes, MoE
   expert caching defaulting to CUDA only, GLM-5 Next support). This package
   consumes the shared runtime via npm rather than building the vcpkg port, so
