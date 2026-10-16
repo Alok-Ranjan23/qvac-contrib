@@ -268,6 +268,10 @@ You create and manage the MCP client, connect it to one or more MCP servers, and
 </Tab>
 </Tabs>
 
+<Callout type="warn">
+MCP is available in the JS/TS client only. The integration lives in the client, not in the worker, so the Python client cannot reach it.
+</Callout>
+
 ### KV cache
 
 The `kvCache` parameter on `completion()` both enables caching and sets the cache key. It accepts:
@@ -306,6 +310,14 @@ The following script enables `kvCache: true` to speed up follow-up turns, and th
 <WrapCode>
 
 ```ts file=<rootDir>/packages/sdk/examples/kv-cache-example.ts title="completion-kv-cache.ts" lineNumbers
+```
+</WrapCode>
+</Tab>
+
+<Tab value="python" label="Python">
+<WrapCode>
+
+```python file=<rootDir>/packages/sdk-python/examples/kv_cache.py title="completion_kv_cache.py" lineNumbers
 ```
 </WrapCode>
 </Tab>
