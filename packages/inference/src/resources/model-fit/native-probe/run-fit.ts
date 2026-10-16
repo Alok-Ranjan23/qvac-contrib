@@ -18,9 +18,10 @@ export interface RunFitOptions {
  *
  * A disposable child is the stronger boundary — a fitter that aborts takes only
  * the child with it — so it is used wherever one can be spawned. Mobile has no
- * such child and runs the fitter in process, carrying crash markers to bound
- * the abort it cannot contain. `bare-subprocess` stays deferred from the mobile
- * pack that way.
+ * such child, and a host that packs this package into one bundle has no runner
+ * on disk to spawn; both run the fitter in process, carrying crash markers to
+ * bound the abort they cannot contain. `bare-subprocess` stays deferred from the
+ * mobile pack that way.
  *
  * Both strategies are imported lazily, so a host only loads the one it uses.
  */
@@ -30,12 +31,14 @@ export async function runFit(
 ): Promise<FitRunResult> {
   const { mobile, timeoutMs, ...runOptions } = options
 
-  if (mobile === true) {
-    const { runInProcessFit } =
-      await import('@/resources/model-fit/native-probe/run-in-process-fit')
-    return runInProcessFit(probe, runOptions)
+  if (mobile !== true) {
+    const { fitRunnerOnDisk, runIsolatedFit } =
+      await import('@/resources/model-fit/native-probe/run-isolated-fit')
+    if (fitRunnerOnDisk()) {
+      return runIsolatedFit(probe, { ...runOptions, ...(timeoutMs !== undefined && { timeoutMs }) })
+    }
   }
 
-  const { runIsolatedFit } = await import('@/resources/model-fit/native-probe/run-isolated-fit')
-  return runIsolatedFit(probe, { ...runOptions, ...(timeoutMs !== undefined && { timeoutMs }) })
+  const { runInProcessFit } = await import('@/resources/model-fit/native-probe/run-in-process-fit')
+  return runInProcessFit(probe, runOptions)
 }

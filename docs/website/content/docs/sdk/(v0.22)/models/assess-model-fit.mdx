@@ -130,7 +130,7 @@ The longer treatment, including how a GPU changes which memory the budget measur
 
 ## Load-time probe
 
-Once the weights are on disk, [`loadModel()`](/sdk/reference/api#loadmodel) runs the same engine fitter against the real file and the resolved load settings before it loads. It is the stronger evidence once you have the file. Desktop runs it in a disposable child process. Mobile, which cannot spawn one, runs it on a worker thread.
+Once the weights are on disk, [`loadModel()`](/sdk/reference/api#loadmodel) runs the same engine fitter against the real file and the resolved load settings before it loads. It is the stronger evidence once you have the file. Desktop runs it in a disposable child process. Mobile, which cannot spawn one, runs it on a worker thread, and so does a host that packs the SDK into one bundle, which carries no runner on disk to spawn.
 
 A crash, timeout, or unsupported configuration resolves to no verdict. Verdicts appear on the SDK log stream as `[advisory-fit:…]` lines.
 

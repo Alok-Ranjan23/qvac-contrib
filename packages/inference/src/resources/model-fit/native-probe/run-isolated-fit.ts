@@ -1,4 +1,5 @@
 import type { AbortSignal } from 'bare-abort-controller'
+import fs from 'bare-fs'
 import { fileURLToPath } from 'bare-url'
 import env from 'bare-env'
 import spawnBare from 'bare-runtime/spawn'
@@ -21,6 +22,19 @@ import {
  */
 function resolveFitRunnerPath(): string {
   return fileURLToPath(new URL('./fit-runner.js', import.meta.url))
+}
+
+/**
+ * Whether the runner can be spawned at all. A host that packs this package into
+ * one bundle carries this module but not the runner, which nothing imports, so
+ * its path names a file inside the bundle that a child can never load.
+ */
+export function fitRunnerOnDisk(): boolean {
+  try {
+    return fs.statSync(resolveFitRunnerPath()).isFile()
+  } catch {
+    return false
+  }
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000
