@@ -2,8 +2,7 @@
   "default-registry": {
     "kind": "git",
     "baseline": "630ffdd9bf0677b827ad732fe92216a096ede046",
-    "repository": "https://github.com/tetherto/qvac-registry-vcpkg.git",
-    "reference": "QVAC-26892/cosyvoice-coreml-ane"
+    "repository": "https://github.com/tetherto/qvac-registry-vcpkg.git"
   },
   "registries": [
     {
@@ -15,7 +14,9 @@
         "vulkan",
         "vulkan-headers",
         "vulkan-loader",
-        "spirv-headers"
+        "spirv-headers",
+        "antlr4",
+        "libuuid"
       ]
     }
   ]

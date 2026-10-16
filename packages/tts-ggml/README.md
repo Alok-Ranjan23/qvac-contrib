@@ -17,14 +17,17 @@ LavaSR neural denoise + 48 kHz bandwidth-extension enhancement.  Unsure
 which checkpoint to stage? Start with [Choosing a model](#choosing-a-model).
 
 
-### Experimental CosyVoice3 Core ML validation
+### CosyVoice3 Core ML sidecars
 
 Apple builds include optional CosyVoice3 Core ML sidecars from the native
-backend. Export and placement details are in the
-[CosyVoice3 Core ML guide](https://github.com/tetherto/qvac-fabric-speech.cpp/blob/QVAC-26892/cosyvoice-coreml-ane/engines/tts/docs/cosyvoice3.md#core-ml-sidecars).
-This validation branch is not ready for release: HiFT waveform parity and
-memory-fit accounting for persistent Core ML models remain open. The current
-fit projection covers ggml and does not certify a Core ML workload.
+`speech-cpp` 2026-10-16 dependency. Export and placement details are in the
+[CosyVoice3 Core ML guide](https://github.com/tetherto/qvac-fabric-speech.cpp/blob/1cf60941455f5571b453ff5c91f743f01bac0010/engines/tts/docs/cosyvoice3.md#core-ml-sidecars).
+The LM, flow frontend/decoder, F0 predictor and HiFT vocoder use resident
+sidecars when present and fall back to ggml when unavailable. HiFT exports
+use FP32 for waveform parity. Core ML chooses operation placement, so a
+sidecar does not guarantee ANE execution or a speed improvement.
+When a sidecar is present, `assessFit` returns an error with reason
+`coreml-memory-estimate-unavailable`; its memory usage is not projected.
 
 
 Runs in-process with a persistent native engine — the GGUFs, the S3Gen

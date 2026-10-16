@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Update the shared speech backend for experimental CosyVoice3 Core ML sidecar validation.
+- Update the shared native `speech-cpp` source to `2026-10-16`, including
+  optional CosyVoice3 Core ML sidecars on Apple platforms.
 
 ### Fixed
 
