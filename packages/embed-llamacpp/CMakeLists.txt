@@ -10,9 +10,8 @@ qvac_addon_project_setup(VALGRIND_SUPP PRE_COMMIT_HOOK)
 
 find_path(QVAC_LIB_INFERENCE_ADDON_CPP_INCLUDE_DIRS "inference-addon-cpp/JsInterface.hpp")
 
-# llama / ggml / vector-index runtime is the shared @qvac/fabric prebuild
-# (dynamically linked, loaded once per process); sets qvac_fabric_target +
-# BACKENDS_SUBDIR_VALUE.
+# llama / ggml runtime is the shared @qvac/fabric prebuild
+# (dynamically linked, loaded once per process); sets qvac_fabric_target.
 qvac_addon_use_fabric()
 
 add_bare_module(embed-llamacpp EXPORTS)
@@ -21,7 +20,6 @@ target_sources(
   ${embed-llamacpp}
   PRIVATE
   ${PROJECT_SOURCE_DIR}/addon/src/js-interface/binding.cpp
-  ${PROJECT_SOURCE_DIR}/addon/src/js-interface/vector-index-binding.cpp
   ${PROJECT_SOURCE_DIR}/addon/src/model-interface/utils.cpp
   ${PROJECT_SOURCE_DIR}/addon/src/model-interface/AsyncWeightsLoader.cpp
   ${PROJECT_SOURCE_DIR}/addon/src/model-interface/BackendSelection.cpp
@@ -29,7 +27,8 @@ target_sources(
   ${PROJECT_SOURCE_DIR}/addon/src/model-interface/LlamaLazyInitializeBackend.cpp
   ${PROJECT_SOURCE_DIR}/addon/src/model-interface/ModelMetadata.cpp
   ${PROJECT_SOURCE_DIR}/addon/src/model-interface/BertModel.cpp
-  ${PROJECT_SOURCE_DIR}/addon/src/model-interface/VectorIndex.cpp
+  ${PROJECT_SOURCE_DIR}/addon/src/model-interface/LlamaModelLoader.cpp
+  ${PROJECT_SOURCE_DIR}/addon/src/model-interface/LayaModel.cpp
 )
 target_include_directories(
   ${embed-llamacpp}
@@ -39,7 +38,7 @@ target_include_directories(
 )
 
 qvac_addon_link_fabric(${embed-llamacpp} ${qvac_fabric_target})
-qvac_addon_finalize(${embed-llamacpp} SUBDIR "${BACKENDS_SUBDIR_VALUE}")
+qvac_addon_finalize(${embed-llamacpp})
 
 if(BUILD_TESTING)
   enable_testing()
