@@ -215,6 +215,11 @@ jobs:
       - name: Generate build system
         id: bare_make_generate
         working-directory: ${{ env.WORKDIR }}
+        # Older vcpkg ports create host tools without forwarding CMAKE_*_COMPILER.
+        # Keep those nested CMake builds on Clang when they inherit Clang flags.
+        env:
+          CC: clang
+          CXX: clang++
         run: bare-make generate -D ENABLE_VULKAN=OFF ${{ inputs.build-testing && '-D BUILD_TESTING=ON' || '' }}
 
       - name: Check C++ files format
