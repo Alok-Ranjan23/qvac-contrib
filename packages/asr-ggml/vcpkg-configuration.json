@@ -16,7 +16,9 @@
         "vulkan-headers",
         "vulkan-loader",
         "spirv-headers",
-        "zlib"
+        "zlib",
+        "antlr4",
+        "libuuid"
       ]
     }
   ]
