@@ -77,6 +77,14 @@ The following script shows how to ingest documents into a built-in RAG workspace
 ```
 </WrapCode>
 </Tab>
+
+<Tab value="python" label="Python">
+<WrapCode>
+
+```python file=<rootDir>/packages/sdk-python/examples/rag_managed.py title="rag_managed.py" lineNumbers
+```
+</WrapCode>
+</Tab>
 </Tabs>
 
 <Callout type="info">
@@ -103,6 +111,14 @@ The following script keeps the documents in a plain `Map`, embeds them with `emb
 ```
 </WrapCode>
 </Tab>
+
+<Tab value="python" label="Python">
+<WrapCode>
+
+```python file=<rootDir>/packages/sdk-python/examples/rag_turbovec.py title="rag_turbovec.py" lineNumbers
+```
+</WrapCode>
+</Tab>
 </Tabs>
 
 <Callout type="info">
@@ -112,6 +128,20 @@ TurboVec quantises vectors (`VectorIndexStorage.TURBOVEC_Q4` by default, `TURBOV
 ### External vector DB
 
 #### MongoDB
+
+This example needs two things the SDK does not provide: the MongoDB driver in your workspace, and a deployment with Atlas Vector Search. Install the driver (the version these docs are tested against):
+
+```bash
+npm i "mongodb@^7.5.0"
+```
+
+One way to get a deployment is the Atlas local container:
+
+```bash
+docker run -p 27017:27017 --name atlas-local mongodb/mongodb-atlas-local
+```
+
+The script connects to `mongodb://localhost:27017/?directConnection=true`; edit that connection string if your deployment lives elsewhere.
 
 The following script stores each document in MongoDB alongside its vector, builds a vector search index over it, and retrieves matches with a `$vectorSearch` aggregation that [pre-filters](https://www.mongodb.com/docs/vector-search/query/aggregation-stages/vector-search-stage/#pre-filter-search-data) by category:
 
@@ -135,6 +165,14 @@ The following script stores each document in MongoDB alongside its vector, build
 
 #### SQLite
 
+This example needs the SQLite WASM build that ships the vector extension, pinned to the version these docs are tested against:
+
+```bash
+npm i "@sqliteai/sqlite-wasm@3.50.4-sync.0.8.30-vector.0.9.23"
+```
+
+The database is in-memory, so there is nothing else to set up.
+
 The following script shows the same workflow using `embed()` plus a SQLite vector index:
 
 <Tabs>
@@ -154,10 +192,6 @@ The following script shows the same workflow using `embed()` plus a SQLite vecto
 </WrapCode>
 </Tab>
 </Tabs>
-
-<Callout type="info">
-The Python client supports this capability through the same worker. A dedicated Python example is not yet published — see the [Python SDK](/sdk/python-sdk) for the API surface.
-</Callout>
 
 <Callout type="success">
 **Tip:** all examples throughout this documentation are self-contained and runnable. For instructions on how to run them, see the [JS/TS quickstart](/sdk/js-ts-sdk#quickstart) or the [Python quickstart](/sdk/python-sdk#quickstart).
