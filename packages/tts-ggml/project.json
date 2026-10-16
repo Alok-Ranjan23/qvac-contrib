@@ -1027,7 +1027,7 @@
         "command": "echo 'orchestrated by on-merge-nx.yml'",
         "cwd": "packages/tts-ggml",
         "ci": {
-          "verifyGenerated": false,
+          "verifyGenerated": true,
           "nameTransform": "rename-prefix",
           "repoName": "tts-ggml",
           "testGateMode": "none",

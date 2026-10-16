@@ -2,8 +2,8 @@
 // workflows never run on a pull request, so a reintroduced feature-*/tmp-*
 // filter is invisible until it publishes off someone's PR branch.
 //
-// Speech publishing builds and publishes without wrapper checks, desktop
-// integration tests or Device Farm runs (QVAC-26904). That package policy is
+// Speech, OCR and translation publishing skips desktop integration tests and
+// Device Farm runs while retaining wrapper verification. That package policy is
 // covered by publish-gate-policy.test.mjs; this suite keeps automatic publishing
 // off main and PR-head branches. Separate test workflows retain their triggers.
 import test from 'node:test'

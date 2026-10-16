@@ -187,7 +187,7 @@ jobs:
             has_build=$(git show "${CONFIG_REF}:${pj}" | jq -r 'if .targets.build then "true" else "false" end')
 
             # Detect generated wrappers from package.json. An explicit false in
-            # trusted on-merge config opts out; speech, OCR and translation opt out.
+            # trusted on-merge config opts out; current packages retain this gate.
             has_check=$(git show "${CONFIG_REF}:packages/${pkg}/package.json" 2>/dev/null \
               | jq -r 'if .scripts["check:generated"] then "true" else "false" end' || echo false)
 
@@ -208,6 +208,8 @@ jobs:
           [ "$(echo "$rows" | jq 'length')" -gt 0 ] && any="true"
 
           prebuild_rows=$(echo "$rows" | jq -c '[.[] | select(.hasPrebuilds == true)]')
+          # Retain pre/post-publish integration as supported opt-in paths.
+          # No current package selects them; testGateMode enables them per package.
           pre_publish_rows=$(echo "$rows" | jq -c '[.[] | select((.testGateMode // "") | startswith("pre-publish"))]')
           post_integration_rows=$(echo "$rows" | jq -c '[.[] | select(.testGateMode == "post-publish-integration")]')
           verify_generated_rows=$(echo "$rows" | jq -c '[.[] | select(.verifyGenerated == true)]')
@@ -623,7 +625,8 @@ jobs:
       rows: ${{ steps.gate.outputs.rows }}
     steps:
       # Per package: only rows opting into post-publish integration reach this
-      # gate. GPR additionally requires postIntegrationOnGpr.
+      # gate. GPR additionally requires postIntegrationOnGpr. Kept as a supported
+      # opt-in path even though no current package enables post-publish tests.
       - id: gate
         shell: bash
         env:

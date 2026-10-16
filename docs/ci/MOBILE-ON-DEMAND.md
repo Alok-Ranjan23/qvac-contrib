@@ -761,9 +761,9 @@ and free.
 
 Speech, OCR and translation publishing in `on-merge-nx.yml` does not launch
 mobile E2E or desktop integration tests. ASR, TTS, BCI, decoder-audio, AudioGen,
-OCR and translation opt out of
-post-publish testing and generated-wrapper checks in their package CI
-configuration; on-merge builds and publishes without running their tests.
+OCR and translation opt out of post-publish testing in their package CI
+configuration. Generated-wrapper verification remains a pre-publish integrity
+gate, including on release pushes and manual dispatches without a PR.
 The publish workflow has no speech mobile callers.
 
 The reusable (`workflow_call`) interfaces remain available to benchmarks and

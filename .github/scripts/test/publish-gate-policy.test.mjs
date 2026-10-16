@@ -1,6 +1,7 @@
 // Locks the wrapper-drift gate on the publish pipelines. Nothing else can:
 // on-merge-* never runs on a pull request, and actionlint checks structure,
 // not semantics.
+// Requires jq on PATH to evaluate the workflow's actual publish-row expression.
 //
 // The `result == 'success'` assertion below is not redundant with the `needs:`
 // one. An `if:` containing `!cancelled()`, `always()` or `failure()` stops
@@ -101,8 +102,8 @@ function consolidatedPackages() {
 // under test, or removing a package from that workflow would remove it from this
 // list too and the coverage assertion below could never fail.
 //
-// Script detection is the default. Selected addons explicitly opt out in project.json;
-// detect reads that policy from the trusted default branch, not the pushed ref.
+// Script detection is the default; any explicit opt-out must come from
+// project.json on the trusted default branch, not the pushed ref.
 function gatedPackages() {
   const packagesDir = join(root, 'packages')
   return readdirSync(packagesDir).filter((name) => {
@@ -124,8 +125,8 @@ function gatedPackages() {
 test('every package that opts into the gate is covered by a pipeline', () => {
   const gated = gatedPackages()
   assert.ok(
-    gated.length >= 6,
-    `expected at least six generated-wrapper packages outside the opt-out list, found ${gated.length}`,
+    gated.length >= 13,
+    `expected at least thirteen generated-wrapper packages, found ${gated.length}`,
   )
 
   const pipelines = wrapperPipelines()
@@ -244,7 +245,7 @@ test('wrapper drift is still checked somewhere at PR time', () => {
   assert.match(sanityChecks, /check:generated/)
 })
 
-test('speech, OCR and translation publishing does not launch wrapper checks, integration or mobile E2E tests (QVAC-26904)', () => {
+test('speech, OCR and translation publishing retains wrapper verification without integration or mobile E2E tests', () => {
   const source = withoutComments(read(CONSOLIDATED))
   const jobs = eachJob(source)
 
@@ -252,7 +253,7 @@ test('speech, OCR and translation publishing does not launch wrapper checks, int
     const project = JSON.parse(read(`packages/${name}/project.json`))
     const config = project.targets['on-merge'].options.ci
     assert.equal(config.testGateMode, 'none', name)
-    assert.equal(config.verifyGenerated, false, name)
+    assert.equal(config.verifyGenerated, true, name)
     assert.notEqual(config.postIntegrationOnGpr, true, name)
 
     assert.ok(!jobs.some((job) => job.text.includes(`uses: ./.github/workflows/integration-mobile-test-${name}.yml`)),
@@ -271,7 +272,7 @@ test('speech, OCR and translation publishing does not launch wrapper checks, int
   }
 })
 
-test('publish rows honor test opt-outs and preserve automatic wrapper detection elsewhere', () => {
+test('publish rows preserve wrapper verification while honoring integration test opt-outs', () => {
   const source = read(CONSOLIDATED)
   const expression = source.match(/row=\$\(jq -n[\s\S]*?\n\s+'([\s\S]*?)'\)/)?.[1]
   assert.ok(expression, 'missing publish row construction')
@@ -288,7 +289,7 @@ test('publish rows honor test opt-outs and preserve automatic wrapper detection 
       '--argjson', 'onmerge', JSON.stringify(config), expression,
     ], { encoding: 'utf8' }))
 
-    assert.equal(row.verifyGenerated, NO_PUBLISH_TEST_PACKAGES.includes(name) ? false : hasCheck, name)
+    assert.equal(row.verifyGenerated, hasCheck, name)
     assert.equal(row.hasPrebuilds, Boolean(project.targets.build), `${name}: preserve prebuild selection`)
     if (NO_PUBLISH_TEST_PACKAGES.includes(name)) {
       assert.equal(row.testGateMode, 'none', name)

@@ -42,10 +42,11 @@ on-pr-nx.yml            (pull_request_target)  ── PR orchestrator
   ├─ publish-cpp-test-status  (scripts/prebuild-status/publish.mjs KIND=cpp-tests → qvac/cpp-tests-<pkg>)
   └─ merge-guard        → public-pr.yml                  (package-level merge-guard / validate-pr; not the required check)
 
-on-merge-nx.yml         (push to main/release/feature/tmp)  ── publish orchestrator
+on-merge-nx.yml         (release-* push / workflow_dispatch)  ── publish orchestrator
   ├─ detect             (per-package prebuild/publish matrices)
   ├─ prebuild           → prebuilds-nx.yml     (packages: ["<pkg>"] override)
-  ├─ integration        → integration-test-nx.yml (packages override, desktop gate)
+  ├─ verify-generated   → verify-generated-wrappers.yml (publish integrity gate)
+  ├─ integration        → integration-test-nx.yml (opt-in; no current packages)
   └─ publish            (GPR/npm + tag, per package)
 
 benchmark-performance-nx.yml  (workflow_dispatch)  ── matrix → prebuilds-nx → integration-test-nx (RTF)
@@ -154,12 +155,15 @@ Mobile tests use the per-package `integration-mobile-test-<pkg>.yml` workflows.
 Speech, OCR and translation publishing in `on-merge-nx.yml` does not launch
 desktop integration or mobile E2E tests: `asr-ggml`, `tts-ggml`, `bci-whispercpp`,
 `decoder-audio`, `audiogen-ggml`, `ocr-ggml` and `translation-nmtcpp` set
-`on-merge.options.ci.testGateMode` to `none` and
-`verifyGenerated` to `false`, so publishing also skips generated-wrapper checks.
-The workflow reads this policy from the trusted default branch. Older release
-branches need the updated workflow to honor the wrapper-check opt-out.
-Prebuilds and publishing remain enabled. Other packages still run their wrapper
-checks automatically when their package manifest defines `check:generated`.
+`on-merge.options.ci.testGateMode` to `none`. The workflow reads this policy
+from the trusted default branch. Prebuilds, generated-wrapper verification and
+publishing remain enabled. Wrapper verification is a publish-integrity gate for
+release pushes and manual dispatches, including those that never open a PR.
+
+The pre-publish integration job, post-build gate, post-publish integration job
+and publish-step test gates remain supported opt-in paths controlled by
+`testGateMode` (and `postIntegrationOnGpr` for GPR post-publish tests). No current
+package opts in; their integration matrices are empty.
 Desktop test targets, on-demand mobile tests, and benchmark workflows remain
 available independently of publishing.
 

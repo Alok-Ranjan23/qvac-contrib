@@ -104,7 +104,7 @@
         "command": "echo 'orchestrated by on-merge-nx.yml'",
         "cwd": "packages/asr-ggml",
         "ci": {
-          "verifyGenerated": false,
+          "verifyGenerated": true,
           "nameTransform": "rename-prefix",
           "repoName": "asr-ggml",
           "testGateMode": "none",
