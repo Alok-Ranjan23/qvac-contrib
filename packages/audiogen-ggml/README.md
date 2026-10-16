@@ -152,6 +152,15 @@ const response = await gen.run('warm cinematic piano with gentle strings', {
 })
 ```
 
+macOS prebuilds also support optional Core ML blocks for the LM, acoustic
+depth decoder and DiT. Export compiled models beside each source GGUF using
+the [Fabric exporter](https://github.com/tetherto/qvac-fabric-speech.cpp/blob/master/engines/audiogen/docs/minimax-coreml.md).
+`load()` discovers matching `<gguf>-coreml/<stage>-block-N.mlmodelc` artifacts
+and keeps them resident. Missing or incompatible blocks use ggml. Native
+weights remain resident too, so Core ML requires additional memory. The
+existing [MiniMax example](examples/generate-music-minimax.js) uses these
+sidecars without changing the JavaScript generation API.
+
 `duration` is converted to the model's 25 semantic frames per second. Use
 `maxFrames` instead for direct control. MiniMax-Music3 rejects ACE-Step-only
 controls such as BPM, DiT shift, frozen semantic codes, cover audio, and

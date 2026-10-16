@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Optional resident MiniMax-Music3 Core ML transformer sidecars in macOS builds.
+
 - Bounded FuzzTest coverage for the JS-adapter number parsers
   (`parseInteger`, `parseFloat`, `checkedInteger`, `checkedFloat`). Linux C++
   CI runs the suite after the native build's caches are saved; this addon has
@@ -17,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Align the shared native `speech-cpp` source pin to `2026-10-14` across
+- Align the shared native `speech-cpp` source pin to `2026-10-16#1` across
   the speech addons so they use the same source revision.
 
 ## [0.8.0] - 2026-10-14

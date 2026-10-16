@@ -14,6 +14,10 @@ restarts at `0.1.0`; the two pre-merge histories are preserved verbatim as
 
 ## [Unreleased]
 
+### Changed
+
+- Align the shared native `speech-cpp` source across all four speech addons.
+
 ### Added
 
 - Bounded FuzzTest coverage for the untrusted s16le PCM decoder

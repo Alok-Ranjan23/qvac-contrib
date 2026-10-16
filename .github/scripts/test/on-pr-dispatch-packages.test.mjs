@@ -56,3 +56,11 @@ test('explicit package selection rejects a non-array input', () => {
   assert.notEqual(result.status, 0)
   assert.match(result.stdout, /packages must be a JSON array/)
 })
+
+test('manual integration validation uses the dispatched configuration branch', () => {
+  const integration = workflow.split('\n  run-integration-tests:\n')[1]
+    .split('\n  # Mobile integration tests')[0]
+  assert.ok(integration.includes(
+    "base-ref: ${{ github.event_name == 'workflow_dispatch' && inputs.config_ref_override || github.event.repository.default_branch }}"
+  ))
+})
