@@ -126,6 +126,11 @@ test('transformLlmConfig: cache_checkpoints is forwarded as a string', (t) => {
   t.is(transformLlmConfig(makeConfig({ cache_checkpoints: 2 }))['cache_checkpoints'], '2')
 })
 
+test('transformLlmConfig: image-max-megapixels is forwarded as a kebab string', (t) => {
+  const result = transformLlmConfig(makeConfig({ 'image-max-megapixels': 20 }))
+  t.is(result['image-max-megapixels'], '20')
+})
+
 test('transformLlmConfig: moe-cache-mib and fit-target take their string forms', (t) => {
   t.is(transformLlmConfig(makeConfig({ 'moe-cache-mib': 'auto' }))['moe-cache-mib'], 'auto')
   t.is(transformLlmConfig(makeConfig({ 'fit-target': 512 }))['fit-target'], '512')

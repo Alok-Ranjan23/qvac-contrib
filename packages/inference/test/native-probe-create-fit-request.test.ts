@@ -80,6 +80,16 @@ test('completion: the checkpoint count stays out of the fit request', (t) => {
   }
 })
 
+test('completion: the image limit stays out of the fit request', (t) => {
+  const plan = completionRequest({ 'image-max-megapixels': 20 })
+
+  t.ok(plan.supported)
+  if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
+  const config = plan.probe.request.config ?? {}
+  t.absent('image-max-megapixels' in config)
+  t.is(config['ctx_size'], '4096')
+})
+
 test('completion: a symbolic main-gpu travels as written', (t) => {
   const plan = completionRequest({ 'main-gpu': 'dedicated' })
 

@@ -47,10 +47,14 @@ export function createLlamaFitRequest(params: LlamaFitRequestParams): FitRequest
   }
 
   if (loadKind === 'completion') {
-    // The addon consumes the checkpoint count before llama.cpp's argument
-    // parser on load but not on fit, where it is rejected as unknown. It sizes
-    // host-RAM state the fitter does not project either way.
-    const { cache_checkpoints: _cacheCheckpoints, ...fitConfig } = modelConfig
+    // The addon's fitter rejects both as unknown arguments, and neither changes
+    // what it projects: the image limit gates images at inference, and the
+    // checkpoint count sizes host-RAM state the fitter does not model.
+    const {
+      'image-max-megapixels': _imageMaxMegapixels,
+      cache_checkpoints: _cacheCheckpoints,
+      ...fitConfig
+    } = modelConfig
     const llm: LlmLlamacpp.FitRequest = {
       ...request,
       config: transformLlmConfig(fitConfig as LlmConfig)
