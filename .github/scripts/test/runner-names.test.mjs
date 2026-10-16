@@ -68,7 +68,7 @@ test('speech C++ test targets and standalone coverage workflows use the same CPU
   }
 })
 
-test('audiogen C++ test carve-out stays on the CPU runner', () => {
+test('audiogen C++ build carve-out uses the CPU runner', () => {
   const project = JSON.parse(readRepoFile('packages/audiogen-ggml/project.json'))
   assert.equal(project.targets['test:cpp'].options.ci.carveOut, true)
   const source = readRepoFile('.github/workflows/cpp-test-coverage-audiogen-ggml.yml')

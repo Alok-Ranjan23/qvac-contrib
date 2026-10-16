@@ -4,18 +4,21 @@
 surface-agnostic: it owns configuration, model loading, authentication, CORS and the
 OpenAPI document, and mounts one or more **extensions** that contribute the actual routes.
 
-| Extension | Flag               | Routes         | Reference                |
-| --------- | ------------------ | -------------- | ------------------------ |
-| `default` | mounted by default | `/qvac/v1/...` | [default.md](default.md) |
-| `openai`  | `--openai`         | `/v1/...`      | [openai.md](openai.md)   |
+| Extension   | Flag               | Routes          | Reference                    |
+| ----------- | ------------------ | --------------- | ---------------------------- |
+| `default`   | mounted by default | `/qvac/v1/...`  | [default.md](default.md)     |
+| `openai`    | `--openai`         | `/v1/...`       | [openai.md](openai.md)       |
+| `systemone` | `--systemone`      | `/v1/systemone` | [systemone.md](systemone.md) |
 
 ```bash
-qvac serve                        # the QVAC surface
-qvac serve --openai               # QVAC + OpenAI-compatible
-qvac serve --openai --no-default  # OpenAI-compatible only
+qvac serve                          # the QVAC surface
+qvac serve --openai                 # QVAC + OpenAI-compatible
+qvac serve --openai --no-default    # OpenAI-compatible only
+qvac serve --systemone --no-default # System One decisions only
+qvac serve --openai --systemone     # chat and decisions in one server
 ```
 
-`qvac serve openai` is a deprecated alias for the last form.
+`qvac serve openai` is a deprecated alias for `qvac serve --openai --no-default`.
 
 The OpenAPI document describes whatever is mounted. It is always at `/openapi.json`;
 `--docs` additionally serves Swagger UI at `/docs`.
@@ -59,6 +62,11 @@ it loads depends on `preload`:
 `preload` defaults to `true` for constant-form entries (`{ "model": "…" }`) and
 `false` for explicit `{ "src", "type" }` entries. To force a lazy model to warm
 at startup, pass `--model <alias>` on the command line.
+
+`modelFitPolicy` sets what the engine fitter's verdict does to one alias's load:
+`log`, `refuse`, or `off`. It overrides the engine-level `modelFitPolicy` for
+that alias only. Under `refuse`, a load the fitter projects will not fit fails
+with `MODEL_FIT_REFUSED`.
 
 Loading is transparent: a request may name any configured alias whether or not it is
 currently loaded. Unloading an alias frees its resources but keeps it configured, so the

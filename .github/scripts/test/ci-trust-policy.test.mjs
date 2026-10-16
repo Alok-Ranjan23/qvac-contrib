@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const MILLISECONDS_PER_MINUTE = 60_000;
@@ -949,18 +949,19 @@ function rpcServerProject() {
   return JSON.parse(read("packages/ggml-rpc-server/project.json"));
 }
 
-// The RPC server smoke test loads Fabric's RPC backend, which needs the
-// libibverbs runtime on the GitHub-hosted linux-arm64 leg. The PR path builds
-// through prebuilds-nx from build.options.ci; the release path still calls
+// Fabric's RPC backend loads libibverbs at runtime, so the RPC server smoke test
+// must not install it: the GitHub-hosted linux-arm64 leg then checks that the
+// server starts over TCP without it. The PR path builds through prebuilds-nx
+// from build.options.ci; the release path still calls
 // prebuilds-ggml-rpc-server.yml.
-test("RPC server prebuilds install the Linux RDMA runtime dependency", () => {
+test("RPC server prebuilds smoke-test without the Linux RDMA runtime", () => {
   const prebuilds = read(".github/workflows/prebuilds-ggml-rpc-server.yml");
   const build = rpcServerProject().targets.build.options.ci;
 
   assert.match(prebuilds, /desktop-smoke-command:/);
-  assert.match(prebuilds, /^\s+linux-extra-packages:\s*libibverbs1$/m);
+  assert.doesNotMatch(prebuilds, /^\s+linux-extra-packages:.*libibverbs/m);
   assert.equal(build.desktopSmokeCommand, "node scripts/smoke-packaged.cjs");
-  assert.equal(build.linuxExtraPackages, "libibverbs1");
+  assert.equal(build.linuxExtraPackages, undefined);
 });
 
 // ci-router turns both routes on for a manual dispatch, so a dispatched run
@@ -1333,7 +1334,7 @@ test("publish-cpp-test-status stamps its run URL into target_url", () => {
 
 test("merge guard changes filter: ALL_PACKAGES and producer-less workflow paths", async () => {
   const { CARVED_OUT_PRODUCERS, CPP_TEST_KEYS, PREBUILD_KEYS } = await import(
-    join(root, ".github/scripts/prebuild-status/lib.mjs")
+    pathToFileURL(join(root, ".github/scripts/prebuild-status/lib.mjs")).href
   );
   const changes = jobBlock(read(".github/workflows/pr-gate-merge.yml"), "changes");
   const filters = {};
@@ -2863,7 +2864,13 @@ test("asr-ggml functional mobile workflow opts into dual flagship per engine sha
 // tag via create-release-tag.yml, keeping the Releases page SDK-focused. Adding
 // a caller here is a deliberate policy decision, not a drive-by edit.
 const GITHUB_RELEASE_REUSABLE = "./.github/workflows/create-github-release.yml";
-const ALLOWED_RELEASE_CALLERS = [".github/workflows/publish-sdk.yml"];
+// release-train.yml cuts the same sdk-v<version> release. It takes the package
+// from .github/release-trains.json, so release-train.test.mjs holds that
+// catalog to @qvac/sdk.
+const ALLOWED_RELEASE_CALLERS = [
+  ".github/workflows/publish-sdk.yml",
+  ".github/workflows/release-train.yml",
+];
 
 test("release policy: only the SDK workflow calls create-github-release.yml", () => {
   const callers = [
@@ -2899,6 +2906,26 @@ test("release policy: no workflow cuts a GitHub Release outside the SDK surface"
     }
     if (/gh release create\b/.test(code)) {
       offenders.push(`${path}: calls 'gh release create'`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+// Unfiltered, nx's publish also publishes every workspace package a train
+// depends on, through `^nx-release-publish`. .github/scripts/release-train.mjs
+// is the one caller, and it names the train's packages.
+test("release policy: no workflow or action calls nx's publish directly", () => {
+  const actionFiles = filesUnder(join(root, ".github/actions"))
+    .filter((path) => /\/action\.ya?ml$/.test(path))
+    .map((path) => path.slice(root.length + 1));
+  const offenders = [];
+  for (const path of [...workflowPaths(), ...actionFiles]) {
+    const code = withoutComments(read(path));
+    if (/nx-release-publish/.test(code)) {
+      offenders.push(`${path}: runs the nx-release-publish target`);
+    }
+    if (/\bnx\s+release\b(?!\s+(?:version|plan|changelog)\b)/.test(code)) {
+      offenders.push(`${path}: calls 'nx release' other than version, plan or changelog`);
     }
   }
   assert.deepEqual(offenders, []);
@@ -2978,10 +3005,10 @@ function eachCppTestsCacheStep(opts = {}) {
   const found = [];
   const patterns = [opts.match].flat();
   for (const path of workflowPaths()) {
-    if (!/\/cpp-tests?-/.test(path)) continue;
+    if (!/\/(reusable-)?cpp-tests?-/.test(path)) continue;
     if (!opts.includeExempt && TRUSTED_CACHE_EXEMPT.has(path)) continue;
     const code = withoutComments(read(path));
-    const steps = code.split(/\n      - /);
+    const steps = code.split(/\n {6}- /);
     steps.forEach((step, index) => {
       if (!patterns.every((p) => p.test(step))) return;
       found.push({ path, code, steps, step, index });

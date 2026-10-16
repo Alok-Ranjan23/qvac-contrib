@@ -23,6 +23,7 @@ export const PREBUILD_KEYS = [
   'ocr-ggml',
   'translation-nmtcpp',
   'tts-ggml',
+  'turbovec-ggml',
   'vla',
 ]
 
@@ -32,10 +33,10 @@ export const PREBUILD_KEYS = [
 // Left out on purpose, because a key without a producer that can fail either
 // times out or passes vacuously:
 //   - ocr-ggml: test:cpp has no options.ci, so nothing posts its status.
-//   - asr-ggml, bci-whispercpp: test:cpp is continueOnError with no
-//     hardGateCommand, so their suites cannot fail the job.
 export const CPP_TEST_KEYS = [
+  'asr-ggml',
   'audiogen-ggml',
+  'bci-whispercpp',
   'classification-ggml',
   'diffusion-cpp',
   'embed-llamacpp',
@@ -44,6 +45,7 @@ export const CPP_TEST_KEYS = [
   'model-fit',
   'translation-nmtcpp',
   'tts-ggml',
+  'turbovec-ggml',
   'vla',
 ]
 

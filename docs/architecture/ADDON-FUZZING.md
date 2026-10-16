@@ -98,7 +98,7 @@ addon build spine into helpers (`qvac_addon_preproject`,
 `qvac_addon_project_setup`, `qvac_addon_use_fabric`, `qvac_addon_link_fabric`,
 `qvac_addon_finalize`) plus a **test-harness staging helper**
 `qvac_addon_stage_fabric_for_test(<target> <fabric_target>)` that copies the
-shared `qvac__fabric@0.bare` runtime + its ggml backends next to a plain test
+shared `qvac__fabric-<suffix>@<major>.bare` runtime + its ggml backends next to a plain test
 executable, sets `$ORIGIN`/`@loader_path` rpath, and links the win32 delay-load
 helper. `classification-ggml` is migrated; the rest follow.
 
@@ -161,7 +161,7 @@ several packages wrap the same `stb_image`, `gguf`, and text-parsing code.
 | --- | --- | --- | --- |
 | **Encoded image bytes** (JPEG/PNG via `stb_image` + resize) | `classification-ggml`, `ocr-ggml`, `vla-ggml`, `diffusion-cpp` (init/img2img/mask) | `preprocess::decodeToRgb`, `preprocessToTensor`, `validateRawRgb` | classic memory-safety hotspot; hand-rolled bounds/dimension checks must hold on malformed headers |
 | **Model-file headers** (GGUF / safetensors) | all (custom wrappers over upstream loaders) | `easyocr::ggml::GgufLoader`, `vla` `safetensors_lite.hpp` / `gguf_helpers.hpp` | header/length-field parsing → integer-overflow / OOB; the *QVAC wrappers* are in scope, upstream loaders are triage-only |
-| **Prompt / model text** (chat templates, GBNF grammar, tool-call & reasoning parsers, tokenizer/vocab) | `llm-llamacpp`, `embed-llamacpp`, `translation-nmtcpp`, `tts-ggml` | reasoning/tool-call parsers (`ReasoningBlockCompactor`, `ReasoningUtils`), template + grammar handling, tokenization | pure string transforms over untrusted text; ideal in-process fuzz targets with no backend state |
+| **Prompt / model text** (chat templates, GBNF grammar, tool-call & reasoning parsers, tokenizer/vocab) | `llm-llamacpp`, `embed-llamacpp`, `translation-nmtcpp`, `tts-ggml` | reasoning/tool-call parsers (`ReasoningUtils`), template + grammar handling, tokenization | pure string transforms over untrusted text; ideal in-process fuzz targets with no backend state |
 | **Audio buffers** (PCM conversion, resampling, streaming windows) | `transcription-whispercpp`, `transcription-parakeet`, `bci-whispercpp`, `tts-ggml`, `audiogen-ggml` | `PcmConversion`, `OutputResampler`, streaming processors | numeric buffer math over caller-supplied sample counts / rates |
 | **Config JSON** (per-model options) | `tts-ggml` (`ChatterboxConfig`/`SupertonicConfig`), `audiogen-ggml` (`AcestepConfig`), whisper/parakeet configs | config parse/validate | small structured parsers over untrusted config values |
 

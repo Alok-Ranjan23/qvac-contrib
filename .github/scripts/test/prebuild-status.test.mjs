@@ -279,26 +279,28 @@ test('evaluatePackage: a status without a parseable producing run stays pending'
 })
 
 test('PREBUILD_KEYS covers the merge-guard allowlist', () => {
-  assert.equal(PREBUILD_KEYS.length, 13)
+  assert.equal(PREBUILD_KEYS.length, 14)
   assert.ok(PREBUILD_KEYS.includes('ggml-rpc-server'))
   assert.ok(PREBUILD_KEYS.includes('tts-ggml'))
+  assert.ok(PREBUILD_KEYS.includes('turbovec-ggml'))
   assert.ok(PREBUILD_KEYS.includes('vla'))
 })
 
 test('CPP_TEST_KEYS covers C++-test packages and uses the vla merge-guard key', () => {
-  assert.equal(CPP_TEST_KEYS.length, 10)
+  assert.equal(CPP_TEST_KEYS.length, 13)
+  assert.ok(CPP_TEST_KEYS.includes('asr-ggml'))
+  assert.ok(CPP_TEST_KEYS.includes('bci-whispercpp'))
   assert.ok(CPP_TEST_KEYS.includes('audiogen-ggml'))
   assert.ok(CPP_TEST_KEYS.includes('ggml-rpc-server'))
+  assert.ok(CPP_TEST_KEYS.includes('turbovec-ggml'))
   assert.ok(CPP_TEST_KEYS.includes('vla'))
   assert.ok(!CPP_TEST_KEYS.includes('fabric'))
   assert.ok(!CPP_TEST_KEYS.includes('vla-ggml'))
 })
 
-// A key without a producer that can fail either times out every PR touching
-// the package (ocr: nothing posts) or passes vacuously (asr/bci: continueOnError
-// with no hardGateCommand). Re-add only once that is no longer true.
+// A package without a C++ test producer cannot publish a status to verify.
 test('CPP_TEST_KEYS excludes packages with no failable C++ test producer', () => {
-  for (const pkg of ['ocr-ggml', 'asr-ggml', 'bci-whispercpp']) {
+  for (const pkg of ['ocr-ggml']) {
     assert.ok(!CPP_TEST_KEYS.includes(pkg), `${pkg} has no failable C++ test producer`)
   }
 })

@@ -6,7 +6,11 @@ import {
   type LlmConfig,
   type EmbedConfig
 } from './llamacpp-config'
-import { whisperConfigSchema, parakeetLoadConfigSchema } from './transcription-config'
+import {
+  whisperConfigSchema,
+  parakeetLoadConfigSchema,
+  mossTranscribeConfigSchema
+} from './transcription-config'
 import type { parakeetConfigSchema } from './transcription-config'
 import { bciConfigSchema } from './bci-config'
 import { nmtConfigBaseSchema, nmtConfigSchema } from './translation-config'
@@ -17,6 +21,8 @@ import {
   ttsConfigSchema,
   ttsCosyvoice3LoadConfigSchema,
   ttsMossLoadConfigSchema,
+  ttsMossSoundEffectLoadConfigSchema,
+  ttsMossSpeechLoadConfigSchema,
   ttsParlerLoadConfigSchema,
   ttsSupertonicLoadConfigSchema
 } from './text-to-speech'
@@ -33,6 +39,7 @@ import {
   whisperModelTypeSchema,
   bciModelTypeSchema,
   parakeetModelTypeSchema,
+  mossTranscribeModelTypeSchema,
   embeddingsModelTypeSchema,
   nmtModelTypeSchema,
   ttsModelTypeSchema,
@@ -49,6 +56,7 @@ import {
 } from './model-types'
 import { sdcppConfigSchema, type SdcppConfig } from './sdcpp-config'
 import { vlaConfigSchema } from './vla'
+import { decisionConfigBaseSchema } from './decision'
 import { classificationConfigSchema } from './classification'
 import { audioGenConfigSchema } from '@/schemas/audio-gen'
 
@@ -59,6 +67,7 @@ export function isBuiltInModelType(modelType: unknown): boolean {
   return typeof modelType === 'string' && builtInModelTypes.has(modelType)
 }
 import { reloadConfigRequestSchema } from './reload-config'
+import { modelFitPolicySchema, type ModelFitPolicy } from './model-fit-policy'
 
 const MODEL_SRC_DESCRIPTION = `The model to load: a registry model constant for a built-in model, or a model source — ${MODEL_SOURCE_URI_HINT} — for HTTP, local, or P2P models.`
 
@@ -72,7 +81,8 @@ const loadModelCommonFields = {
       'Alternate source — an HTTP URL or local file path — used to load a built-in registry model when it cannot be downloaded from the registry. The bytes are validated against the model checksum before use.'
     ),
   requireHttpChecksum: z.boolean().optional(),
-  requireSecureTransport: z.boolean().optional()
+  requireSecureTransport: z.boolean().optional(),
+  modelFitPolicy: modelFitPolicySchema.optional()
 }
 
 const loadModelRequestCommonFields = {
@@ -96,7 +106,9 @@ const modelConfigKeysByModelType = new Map<string, Set<string>>([
   [ModelType.whispercppTranscription, configKeys(whisperConfigSchema)],
   [ModelType.bciWhispercppTranscription, configKeys(bciConfigSchema)],
   [ModelType.parakeetTranscription, configKeys(parakeetLoadConfigSchema)],
+  [ModelType.mossTranscribe, configKeys(mossTranscribeConfigSchema)],
   [ModelType.llamacppEmbedding, configKeys(embedConfigBaseSchema)],
+  [ModelType.llamacppDecision, configKeys(decisionConfigBaseSchema)],
   [ModelType.nmtcppTranslation, configKeys(...nmtConfigBaseSchema.options)],
   [
     ModelType.ttsGgml,
@@ -107,6 +119,8 @@ const modelConfigKeysByModelType = new Map<string, Set<string>>([
       ttsCosyvoice3LoadConfigSchema,
       ttsAudio8LoadConfigSchema,
       ttsMossLoadConfigSchema,
+      ttsMossSoundEffectLoadConfigSchema,
+      ttsMossSpeechLoadConfigSchema,
       LEGACY_TTS_ONNX_MODEL_CONFIG_FIELDS
     )
   ],
@@ -155,6 +169,13 @@ export const loadBuiltinModelOptionsBaseSchema = z.union([
   z
     .object({
       ...loadModelCommonFields,
+      modelType: z.literal(ModelType.llamacppDecision),
+      modelConfig: decisionConfigBaseSchema.optional()
+    })
+    .strict(),
+  z
+    .object({
+      ...loadModelCommonFields,
       modelType: llmModelTypeSchema,
       modelConfig: llmConfigBaseSchema.strict().optional()
     })
@@ -178,6 +199,13 @@ export const loadBuiltinModelOptionsBaseSchema = z.union([
       ...loadModelCommonFields,
       modelType: parakeetModelTypeSchema,
       modelConfig: parakeetLoadConfigSchema.optional()
+    })
+    .strict(),
+  z
+    .object({
+      ...loadModelCommonFields,
+      modelType: mossTranscribeModelTypeSchema,
+      modelConfig: mossTranscribeConfigSchema.optional()
     })
     .strict(),
   z
@@ -270,6 +298,7 @@ function optionalRequestFields(data: {
   fallbackSrc?: string | undefined
   requireHttpChecksum?: boolean | undefined
   requireSecureTransport?: boolean | undefined
+  modelFitPolicy?: ModelFitPolicy | undefined
   requestId?: string | undefined
 }) {
   return {
@@ -280,6 +309,7 @@ function optionalRequestFields(data: {
     ...(data.requireSecureTransport !== undefined && {
       requireSecureTransport: data.requireSecureTransport
     }),
+    ...(data.modelFitPolicy !== undefined && { modelFitPolicy: data.modelFitPolicy }),
     ...(data.requestId !== undefined && { requestId: data.requestId })
   }
 }
@@ -346,6 +376,23 @@ export const loadBuiltinToRequestSchema = z.discriminatedUnion('modelType', [
     .transform((data) => ({
       type: 'loadModel' as const,
       modelType: ModelType.parakeetTranscription,
+      modelSrc: modelInputToSrcSchema.parse(data.modelSrc),
+      modelName: modelInputToNameSchema.parse(data.modelSrc),
+      modelConfig: data.modelConfig,
+      seed: data.seed ?? false,
+      withProgress: data.withProgress ?? !!data.onProgress,
+      ...optionalRequestFields(data)
+    })),
+  z
+    .object({
+      ...loadModelRequestCommonFields,
+      modelType: mossTranscribeModelTypeSchema,
+      modelConfig: mossTranscribeConfigSchema.optional()
+    })
+    .strict()
+    .transform((data) => ({
+      type: 'loadModel' as const,
+      modelType: ModelType.mossTranscribe,
       modelSrc: modelInputToSrcSchema.parse(data.modelSrc),
       modelName: modelInputToNameSchema.parse(data.modelSrc),
       modelConfig: data.modelConfig,
@@ -472,6 +519,23 @@ export const loadBuiltinToRequestSchema = z.discriminatedUnion('modelType', [
   z
     .object({
       ...loadModelRequestCommonFields,
+      modelType: z.literal(ModelType.llamacppDecision),
+      modelConfig: decisionConfigBaseSchema.optional()
+    })
+    .strict()
+    .transform((data) => ({
+      type: 'loadModel' as const,
+      modelType: ModelType.llamacppDecision,
+      modelSrc: modelInputToSrcSchema.parse(data.modelSrc),
+      modelName: modelInputToNameSchema.parse(data.modelSrc),
+      modelConfig: data.modelConfig,
+      seed: data.seed ?? false,
+      withProgress: data.withProgress ?? !!data.onProgress,
+      ...optionalRequestFields(data)
+    })),
+  z
+    .object({
+      ...loadModelRequestCommonFields,
       modelType: vlaModelTypeSchema,
       modelConfig: vlaConfigSchema.strict().optional()
     })
@@ -558,6 +622,11 @@ const commonModelConfigSchema = z.object({
     .describe(
       'Reject plaintext http:// and HTTPS→HTTP downgrades for every HTTP source on this call (loopback exempt); when unset, only Hugging Face transport is hardened. Overrides the engine config for this call; defaults to the config value (false).'
     ),
+  modelFitPolicy: modelFitPolicySchema
+    .optional()
+    .describe(
+      "What the engine fitter's verdict does to this load: `log` reports it and loads anyway, `refuse` rejects a load the fitter projects will not fit, `off` skips the check. Overrides the engine config for this call; defaults to the config value (`log`)."
+    ),
   requestId: z
     .string()
     .min(1)
@@ -595,6 +664,20 @@ export const loadParakeetModelRequestSchema = commonModelConfigSchema
   .extend({
     modelType: z.literal(ModelType.parakeetTranscription),
     modelConfig: parakeetLoadConfigSchema.optional()
+  })
+  .strict()
+
+export const loadMossTranscribeModelRequestSchema = commonModelConfigSchema
+  .extend({
+    modelType: z.literal(ModelType.mossTranscribe),
+    modelConfig: mossTranscribeConfigSchema.optional()
+  })
+  .strict()
+
+export const loadDecisionModelRequestSchema = commonModelConfigSchema
+  .extend({
+    modelType: z.literal(ModelType.llamacppDecision),
+    modelConfig: decisionConfigBaseSchema.optional()
   })
   .strict()
 
@@ -671,7 +754,9 @@ export const loadModelSrcRequestSchema = z
     loadWhisperModelRequestSchema,
     loadBciModelRequestSchema,
     loadParakeetModelRequestSchema,
+    loadMossTranscribeModelRequestSchema,
     loadEmbeddingsModelRequestSchema,
+    loadDecisionModelRequestSchema,
     loadNmtModelRequestSchema,
     loadTtsModelRequestSchema,
     loadOcrModelRequestSchema,
@@ -810,6 +895,7 @@ export type LoadModelDescriptorOnlyOptions = {
   modelConfig?: Record<string, unknown>
   seed?: boolean
   fallbackSrc?: string
+  modelFitPolicy?: ModelFitPolicy
   onProgress?: (progress: ModelProgressUpdate) => void
   logger?: Logger
 }
@@ -837,13 +923,15 @@ export type InferredConfig<S> = S extends {
               ? Partial<z.input<typeof ocrConfigSchema>>
               : S extends { engine: typeof ModelType.parakeetTranscription }
                 ? z.input<typeof parakeetConfigSchema>
-                : S extends { engine: typeof ModelType.sdcppGeneration }
-                  ? SdcppConfig
-                  : S extends { engine: typeof ModelType.audiogenGgml }
-                    ? z.input<typeof audioGenConfigSchema>
-                    : S extends { engine: typeof ModelType.ggmlVla }
-                      ? z.input<typeof vlaConfigSchema>
-                      : Record<string, unknown>
+                : S extends { engine: typeof ModelType.mossTranscribe }
+                  ? z.input<typeof mossTranscribeConfigSchema>
+                  : S extends { engine: typeof ModelType.sdcppGeneration }
+                    ? SdcppConfig
+                    : S extends { engine: typeof ModelType.audiogenGgml }
+                      ? z.input<typeof audioGenConfigSchema>
+                      : S extends { engine: typeof ModelType.ggmlVla }
+                        ? z.input<typeof vlaConfigSchema>
+                        : Record<string, unknown>
 
 /**
  * `loadModel` options for descriptors that preserve a literal `engine`.
@@ -855,6 +943,7 @@ export type LoadModelDescriptorInferredOptions<S extends ModelDescriptor> = {
   modelConfig?: InferredConfig<S>
   seed?: boolean
   fallbackSrc?: string
+  modelFitPolicy?: ModelFitPolicy
   onProgress?: (progress: ModelProgressUpdate) => void
   logger?: Logger
 }

@@ -1,3 +1,5 @@
+import { SpeakerAwareExecutor } from '../shared/executors/node/speaker-aware-executor.js'
+import { DecisionExecutor } from '../shared/executors/decision-executor.js'
 import { RpcServerExecutor } from '../shared/executors/rpc-server-executor.js'
 import { createExecutor, type TestDefinition } from '@qvac/test-suite'
 import { createStepBindings } from '../shared/step-bindings.js'
@@ -47,7 +49,6 @@ import { SystemResourcesExecutor } from '../shared/executors/system-resources-ex
 import { ConfigExecutor } from '../shared/executors/config-executor.js'
 import { NoLingeringBareExecutor } from '../shared/executors/node/no-lingering-bare-executor.js'
 import { KvCacheRestartExecutor } from '../shared/executors/node/kv-cache-restart-executor.js'
-import { MultiGpuExecutor } from '../shared/executors/multi-gpu-executor.js'
 import { NodeCancellationExecutor } from '../shared/executors/node/cancellation-executor.js'
 import { PluginExecutor } from '../shared/executors/plugin-executor.js'
 
@@ -65,10 +66,12 @@ function resolveTableAsset(kind: string, file: string): string {
 // -- see tests/shared/platform-policy.ts.
 const resources = new ResourceManager(policyFor('desktop'))
 
-// One table, shared with every other client, applied here.
+// One table, shared with every other client, applied here. The runner owns the label this leg
+// registers with and publishes it, so the table and the skip decisions cannot disagree. Without
+// it -- a framework older than the runner change -- both fall back to the bare family.
 applyResourceTable(
   RESOURCE_TABLE,
-  'desktop',
+  process.env['QVAC_TEST_PLATFORM'] ?? 'desktop',
   (dep, definition) => resources.define(dep, definition as never),
   {
     const: (name) => (MODEL_CONSTANTS as Record<string, unknown>)[name],
@@ -130,6 +133,8 @@ const stepBindings = createStepBindings(resources)
 
 export const executor = createExecutor({
   handlers: [
+    new SpeakerAwareExecutor(resources),
+    new DecisionExecutor(resources),
     new ModelLoadingExecutor(resources),
     new BatchCompletionExecutor(resources, {
       resolveAttachmentPath: resolveBatchAttachmentPath
@@ -180,7 +185,6 @@ export const executor = createExecutor({
     new ConfigExecutor(),
     new NoLingeringBareExecutor(),
     new KvCacheRestartExecutor(resources),
-    new MultiGpuExecutor(resources),
     new NodeCancellationExecutor(resources),
     new PluginExecutor(resources)
   ],

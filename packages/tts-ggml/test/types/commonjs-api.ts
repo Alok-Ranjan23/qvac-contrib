@@ -93,6 +93,24 @@ async function pocketCompletionMetadata(pocket: TTSGgml): Promise<void> {
 }
 void [firstAudioMs, pocketOutput, pocketCompletionMetadata]
 
+const mossFitWithoutDecoder = {
+  engineType: 'moss' as const,
+  mossBackbonePath: './moss-tts-delay-f16.gguf',
+  promptRows: 128,
+  referenceSamples: 0,
+  streaming: false
+}
+const mossFitRequest: TTSGgml.MossFitRequest = {
+  ...mossFitWithoutDecoder,
+  mossCodecDecoderPath: './moss-codec-decoder-f16.gguf'
+}
+const mossFitResult: Promise<TTSGgml.TtsFitResult> = TTSGgml.assessFit(mossFitRequest)
+// @ts-expect-error assessFit returns a Promise of the result
+const mossFitSync: TTSGgml.TtsFitResult = TTSGgml.assessFit(mossFitRequest)
+// @ts-expect-error MOSS fit requires a decoder even without reference audio
+void TTSGgml.assessFit(mossFitWithoutDecoder)
+void [mossFitResult, mossFitSync]
+
 const mossSfxWorkload = {
   engineType: 'moss-sfx' as const,
   prompt: 'Rain on a tin roof.',
@@ -106,13 +124,13 @@ const mossSfxFitRequest: TTSGgml.MossSoundEffectFitRequest = {
   steps: 20,
   shift: 5
 }
-const mossSfxFitResult: TTSGgml.TtsFitResult = TTSGgml.assessFit(mossSfxFitRequest)
+const mossSfxFitResult: Promise<TTSGgml.TtsFitResult> = TTSGgml.assessFit(mossSfxFitRequest)
 // @ts-expect-error MOSS sound-effect fit requires a model path
-TTSGgml.assessFit(mossSfxWorkload)
+void TTSGgml.assessFit(mossSfxWorkload)
 const { prompt, ...mossSfxWithoutPrompt } = mossSfxFitRequest
 // @ts-expect-error MOSS sound-effect fit requires a prompt
-TTSGgml.assessFit(mossSfxWithoutPrompt)
+void TTSGgml.assessFit(mossSfxWithoutPrompt)
 const { seconds, ...mossSfxWithoutSeconds } = mossSfxFitRequest
 // @ts-expect-error MOSS sound-effect fit requires seconds
-TTSGgml.assessFit(mossSfxWithoutSeconds)
+void TTSGgml.assessFit(mossSfxWithoutSeconds)
 void [mossSfxFitResult, prompt, seconds]

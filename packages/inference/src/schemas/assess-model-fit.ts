@@ -2,6 +2,17 @@ import { z } from 'zod'
 import { modelRegistryEntrySchema } from '@/schemas/registry'
 import { modelSrcInputSchema } from '@/schemas/model-src-utils'
 import { modelTypeInputSchema } from '@/schemas/model-types'
+import { transcribeParamsSchema } from '@/schemas/transcription'
+
+export const transcriptionFitWorkloadSchema = transcribeParamsSchema
+  .pick({ prompt: true, hotwords: true, maxNewTokens: true })
+  .extend({ audioSeconds: z.number().positive().describe('Longest whole recording to project.') })
+  .strict()
+  .refine((value) => value.prompt === undefined || !value.hotwords?.length, {
+    message: 'MOSS prompt cannot be combined with hotwords'
+  })
+
+export type TranscriptionFitWorkload = z.infer<typeof transcriptionFitWorkloadSchema>
 
 /**
  * Advisory outcome of a pre-download fit assessment.
@@ -16,7 +27,7 @@ export const modelFitVerdictSchema = z.enum(['likely-fits', 'likely-too-large', 
  * estimator declares no kind for it assesses as `unknown`.
  */
 export type ModelFitWorkload =
-  { kind: 'llm'; contextTokens?: number } | { kind: 'audio'; windowMs: number; streaming: boolean }
+  { kind: 'llm'; contextTokens?: number } | { kind: 'audio'; windowMs?: number; streaming: boolean }
 
 /**
  * The part of a model constant an assessment reads. Pass a catalog constant
@@ -66,6 +77,35 @@ export interface ModelFitEstimateTarget {
  */
 export const modelFitExecutionSchema = z.enum(['sequential', 'concurrent'])
 
+/** Fit-only workload used to estimate MOSS text-to-speech memory requirements. */
+export const ttsFitWorkloadSchema = z.union([
+  z
+    .strictObject({
+      promptRows: z
+        .number()
+        .int()
+        .positive()
+        .max(2147483647)
+        .describe('Complete native prompt rows, including dialogue and references.'),
+      referenceSamples: z
+        .number()
+        .int()
+        .nonnegative()
+        .max(2147483647)
+        .describe('Total mono reference audio samples.'),
+      streaming: z.boolean().describe('Whether the MOSS workload uses native streaming.')
+    })
+    .meta({ title: 'MossTtsFitWorkload' }),
+  z
+    .strictObject({
+      prompt: z.string().min(1).describe('Sound-effect description.'),
+      seconds: z.number().positive().max(30).describe('Sound-effect duration in seconds, up to 30.')
+    })
+    .meta({ title: 'MossSoundEffectFitWorkload' })
+])
+
+export type TtsFitWorkload = z.infer<typeof ttsFitWorkloadSchema>
+
 /**
  * A load to assess, in `loadModel`'s own parameters. The engine's plugin
  * resolves it, so the config and the artifact keys the fitter reads are the
@@ -75,6 +115,11 @@ export const modelFitExecutionSchema = z.enum(['sequential', 'concurrent'])
  * artifact, or to the file itself where it is already on disk.
  */
 export const modelFitCandidateSchema = z.object({
+  transcriptionWorkload: transcriptionFitWorkloadSchema
+    .optional()
+    .describe(
+      'MOSS fit-only workload. Required for a native MOSS projection; does not configure loading.'
+    ),
   modelSrc: modelSrcInputSchema
     .optional()
     .describe(
@@ -84,6 +129,11 @@ export const modelFitCandidateSchema = z.object({
     .optional()
     .describe(
       'Engine that would run the load. Inferred from `modelSrc` when omitted, as `loadModel` infers it; required only where the source does not name one.'
+    ),
+  ttsWorkload: ttsFitWorkloadSchema
+    .optional()
+    .describe(
+      'Fit-only MOSS-TTS/TTSD or MOSS-SoundEffect workload; never passed to model loading.'
     ),
   modelConfig: z
     .record(z.string(), z.unknown())
@@ -244,7 +294,7 @@ export const nativeProbePlanSchema = z.object({
  * the engine separates them, and are absent together where it reports only a
  * total. They are summed across devices, as `deviceBytes` is, so a load spread
  * over more than one device is described by its totals and `deviceName` names
- * the first.
+ * the first non-CPU row.
  *
  * `deviceFreeBytes` is the backend's own gauge. A device sharing the host pool,
  * as Apple silicon and Adreno/Mali do, reports what it could address rather
@@ -268,6 +318,21 @@ export const nativeProbeProjectionSchema = z.object({
     .describe('Compute buffers and graph arenas, within `deviceBytes`.'),
   deviceFreeBytes: z.number().optional().describe('Device memory free when the probe ran.'),
   deviceTotalBytes: z.number().optional().describe('Device memory installed.'),
+  devices: z
+    .array(
+      z.object({
+        name: z.string().describe('Device name as the engine registered it.'),
+        totalBytes: z.number().describe('Device memory installed.'),
+        freeBytes: z.number().describe('Device memory free when the probe ran.'),
+        weightsBytes: z.number().describe('Model weights placed on this device.'),
+        contextBytes: z.number().describe('Context and KV cache placed on this device.'),
+        computeBytes: z.number().describe('Compute buffers placed on this device.')
+      })
+    )
+    .optional()
+    .describe(
+      'One row per device the load was placed on, including the CPU backend, host excluded — `hostBytes` carries that. The flattened totals sum these rows, and `deviceName` names the first non-CPU row.'
+    ),
   report: z
     .string()
     .optional()

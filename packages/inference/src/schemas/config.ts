@@ -1,12 +1,18 @@
 import { z } from 'zod'
 import { logLevelSchema } from '@/schemas/logging-stream'
+import { decisionConfigBaseSchema } from '@/schemas/decision'
 import { ModelType } from '@/schemas/model-types'
 import { llmConfigBaseSchema, embedConfigBaseSchema } from '@/schemas/llamacpp-config'
-import { whisperConfigSchema, parakeetConfigSchema } from '@/schemas/transcription-config'
+import {
+  whisperConfigSchema,
+  parakeetConfigSchema,
+  mossTranscribeConfigSchema
+} from '@/schemas/transcription-config'
 import { ocrConfigSchema } from '@/schemas/ocr'
 import { sdcppConfigSchema } from '@/schemas/sdcpp-config'
 import { vlaConfigSchema } from '@/schemas/vla'
 import { runtimeContextSchema } from '@/schemas/runtime-context'
+import { modelFitPolicySchema } from '@/schemas/model-fit-policy'
 
 // Alias keys for user convenience (maps to canonical types)
 const AliasKeys = {
@@ -48,8 +54,10 @@ export const deviceConfigDefaultsSchema = z
     // Canonical keys
     [ModelType.llamacppCompletion]: llmConfigBaseSchema.optional(),
     [ModelType.llamacppEmbedding]: embedConfigBaseSchema.optional(),
+    [ModelType.llamacppDecision]: decisionConfigBaseSchema.optional(),
     [ModelType.whispercppTranscription]: whisperConfigSchema.partial().optional(),
     [ModelType.parakeetTranscription]: parakeetConfigSchema.partial().optional(),
+    [ModelType.mossTranscribe]: mossTranscribeConfigSchema.optional(),
     [ModelType.nmtcppTranslation]: z.record(z.string(), z.unknown()).optional(),
     [ModelType.ttsGgml]: z.record(z.string(), z.unknown()).optional(),
     [ModelType.ggmlOcr]: ocrConfigSchema.partial().optional(),
@@ -170,6 +178,16 @@ export const qvacConfigSchema = z.object({
    * Defaults to false.
    */
   requireSecureTransport: z.boolean().optional(),
+
+  /**
+   * What the engine fitter's verdict does to a load.
+   * - "log" (default): the outcome is logged and reported on
+   *   `getLoadedModelInfo`, and the load proceeds whatever the verdict.
+   * - "refuse": a load the fitter projects will not fit is rejected.
+   * - "off": the probe does not run.
+   * A load overrides this for itself with `modelFitPolicy`.
+   */
+  modelFitPolicy: modelFitPolicySchema.optional(),
 
   /**
    * Maximum number of retry attempts for registry (P2P) downloads on timeout.

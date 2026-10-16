@@ -1,6 +1,5 @@
 import { type QvacResponse } from "@qvac/infer-base";
 import * as errorModule from "./lib/error";
-import { resolveBackendsDir as resolveBackendsDirImpl } from "./lib/backends";
 import { assessFit as assessFitImpl, type Audio8FitRequest, type MossFitRequest, type MossSoundEffectFitRequest, type ChatterboxFitRequest, type CosyvoiceFitRequest, type ParlerFitRequest, type SupertonicFitRequest, type TtsFitEngine, type TtsFitRequest, type TtsFitResult, type TtsFitStatus } from "./lib/fit";
 import { type SentenceDelimiterPreset } from "./lib/textStreamAccumulator";
 declare const ENGINE_CHATTERBOX = "chatterbox";
@@ -381,7 +380,7 @@ interface MossSpeechFields {
     textReply?: boolean;
     /** Cut the spoken reply after this many seconds (0 = no cut). */
     maxReplySeconds?: number;
-    /** Bound on generated rows, 1..4096 (engine default 1000). */
+    /** Explicit bound on generated rows, 1..4096; omitted uses remaining model context. */
     maxNewTokens?: number;
     /** Greedy decoding instead of sampling. */
     greedy?: boolean;
@@ -607,7 +606,11 @@ interface TTSGgmlOptions extends ParlerDescriptionFields, Audio8VoiceFields, TTS
      * streaming (batch synthesis only).
      */
     denoiser?: LavaSRDenoiserOptions;
-    /** Directory the addon scans for dynamically loaded ggml backends. */
+    /**
+     * Directory the addon scans for dynamically loaded ggml backends, as given.
+     * Unset scans the addon's own: the one its platform package or the app
+     * installed next to the native module.
+     */
     backendsDir?: string;
     /** Directory where ggml-opencl persists its compiled program binary. */
     openclCacheDir?: string;
@@ -1211,7 +1214,6 @@ declare namespace TTSGgml {
     type MossFitRequest = NamespaceMossFit;
     type MossSoundEffectFitRequest = NamespaceMossSoundEffectFit;
     type CosyvoiceFitRequest = NamespaceCosyvoiceFit;
-    const resolveBackendsDir: typeof resolveBackendsDirImpl;
     const assessFit: typeof assessFitImpl;
 }
 export = TTSGgml;

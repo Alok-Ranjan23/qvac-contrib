@@ -50,77 +50,40 @@ function completionRequest(overrides: Record<string, unknown> = {}) {
 
 // === llama.cpp ===
 
-// The load reaches the engine in llama's own spelling, so the SDK classifies
-// rather than interprets and llama's argument table does the parsing.
-test('completion: forwards the load settings in llama spelling', (t) => {
-  const plan = completionRequest()
-
-  t.ok(plan.supported)
-  if (!plan.supported) return
-  t.is(plan.probe.engine, 'llm-llamacpp')
-  t.alike(plan.probe.request, {
-    modelPath: '/models/model.gguf',
-    minCtxSize: 4096,
-    params: {
-      'ctx-size': '4096',
-      'gpu-layers': '99',
-      'load-mode': 'mmap',
-      parallel: '2',
-      'cache-type-k': 'q8_0',
-      'cache-type-v': 'q8_0',
-      'main-gpu': '0',
-      'split-mode': 'layer'
-    }
-  })
-})
-
-// These move memory between devices, or between device and host. llama parses
-// them, so they reach the engine untouched.
-test('completion: placement settings reach the engine untouched', (t) => {
-  const plan = completionRequest({
-    'tensor-split': '3,1',
-    'cpu-moe': true,
-    'n-cpu-moe': 2,
-    'override-tensor': 'ffn_.*=CPU',
-    'kv-offload': false
-  })
+test('completion: forwards the whole resolved load to its own engine', (t) => {
+  const plan = completionRequest({ threads: 8, 'cpu-mask': 'ff' })
 
   t.ok(plan.supported)
   if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
-  const params = plan.probe.request.params ?? {}
-  t.is(params['tensor-split'], '3,1')
-  t.is(params['n-cpu-moe'], '2')
-  t.is(params['override-tensor'], 'ffn_.*=CPU')
-  t.ok('cpu-moe' in params)
-  t.ok('no-kv-offload' in params)
-})
-
-test('completion: flash attention is evidence, not a refusal', (t) => {
-  const plan = completionRequest({ 'flash-attn': 'on' })
-
-  t.ok(plan.supported)
-  if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
-  t.is(plan.probe.request.params?.['flash-attn'], 'on')
-})
-
-test('completion: an auto context leaves the fitter free to choose', (t) => {
-  const plan = completionRequest({ ctx_size: 0 })
-
-  t.ok(plan.supported)
-  if (!plan.supported) return
-  t.absent('ctxSize' in plan.probe.request)
+  const config = plan.probe.request.config ?? {}
+  t.is(plan.probe.request.modelPath, '/models/model.gguf')
+  t.is(config['ctx_size'], '4096')
+  t.is(config['gpu_layers'], '99')
+  t.is(config['cache-type-k'], 'q8_0')
+  // A setting the projection does not read is llama's to ignore, not the SDK's
+  // to drop, so nothing is filtered on the way out.
+  t.is(config['threads'], '8')
+  t.is(config['cpu-mask'], 'ff')
+  // The engine resolves its own floor from the load it was given.
   t.absent('minCtxSize' in plan.probe.request)
 })
 
-test('completion: CPU scheduling settings are dropped, not refused', (t) => {
-  const plan = completionRequest({
-    threads: 8,
-    'threads-batch': 16,
-    'cpu-mask': 'ff',
-    'cpu-mask-batch': 'f0'
-  })
+test('completion: the image limit stays out of the fit request', (t) => {
+  const plan = completionRequest({ 'image-max-megapixels': 20 })
 
   t.ok(plan.supported)
+  if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
+  const config = plan.probe.request.config ?? {}
+  t.absent('image-max-megapixels' in config)
+  t.is(config['ctx_size'], '4096')
+})
+
+test('completion: a symbolic main-gpu travels as written', (t) => {
+  const plan = completionRequest({ 'main-gpu': 'dedicated' })
+
+  t.ok(plan.supported)
+  if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
+  t.is((plan.probe.request.config ?? {})['main-gpu'], 'dedicated')
 })
 
 test('completion: the margin reaches the engine request', (t) => {
@@ -129,128 +92,12 @@ test('completion: the margin reaches the engine request', (t) => {
     modelPath: '/models/model.gguf',
     modelConfig: COMPLETION_CONFIG,
     isShardedModel: false,
-    marginBytes: 2 * 1024 ** 3
+    marginBytes: 2048
   })
 
   t.ok(plan.supported)
   if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
-  t.is(plan.probe.request.marginBytes, 2 * 1024 ** 3)
-})
-
-// `fit-target` is the margin the real load asks the engine to leave free; the
-// advisory margin covers the models already resident. The stricter wins.
-test('completion: the load target and the advisory margin resolve to the stricter', (t) => {
-  const targetWins = createFitRequest({
-    modelType: ModelType.llamacppCompletion,
-    modelPath: '/models/model.gguf',
-    modelConfig: { ...COMPLETION_CONFIG, 'fit-target': 4096 },
-    isShardedModel: false,
-    marginBytes: 1024 * 1024 * 1024
-  })
-  t.ok(targetWins.supported)
-  if (!targetWins.supported || targetWins.probe.engine !== 'llm-llamacpp') return
-  t.is(targetWins.probe.request.marginBytes, 4096 * 1024 * 1024)
-
-  const advisoryWins = createFitRequest({
-    modelType: ModelType.llamacppCompletion,
-    modelPath: '/models/model.gguf',
-    modelConfig: { ...COMPLETION_CONFIG, 'fit-target': 512 },
-    isShardedModel: false,
-    marginBytes: 8 * 1024 ** 3
-  })
-  t.ok(advisoryWins.supported)
-  if (!advisoryWins.supported || advisoryWins.probe.engine !== 'llm-llamacpp') return
-  t.is(advisoryWins.probe.request.marginBytes, 8 * 1024 ** 3)
-})
-
-// A per-device list resolves to its largest entry: the only reading that cannot
-// project a device as roomier than the load will leave it.
-test('completion: a per-device fit target takes its largest entry', (t) => {
-  const plan = createFitRequest({
-    modelType: ModelType.llamacppCompletion,
-    modelPath: '/models/model.gguf',
-    modelConfig: { ...COMPLETION_CONFIG, 'fit-target': '1024,2048' },
-    isShardedModel: false
-  })
-
-  t.ok(plan.supported)
-  if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
-  t.is(plan.probe.request.marginBytes, 2048 * 1024 * 1024)
-})
-
-test('completion: a setting outside the memory set does not reach the engine', (t) => {
-  const plan = completionRequest({ some_new_load_knob: 7, temp: 0.4 })
-
-  t.ok(plan.supported)
-  if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
-  t.absent('some_new_load_knob' in (plan.probe.request.params ?? {}))
-  t.absent('temp' in (plan.probe.request.params ?? {}))
-})
-
-test("completion: llama's own auto-fit reaches the engine", (t) => {
-  const plan = completionRequest({ fit: false, 'fit-ctx': 8192 })
-
-  t.ok(plan.supported)
-  if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
-  t.is(plan.probe.request.params?.['fit'], 'false')
-  t.is(plan.probe.request.params?.['fit-ctx'], '8192')
-})
-
-// The transform rewrites the boolean into whichever flag it asserts, and llama
-// reads the flag's polarity from its own negated-argument table.
-test('completion: kv offload reaches the engine as the flag it asserts', (t) => {
-  const off = completionRequest({ 'kv-offload': false })
-  t.ok(off.supported)
-  if (!off.supported || off.probe.engine !== 'llm-llamacpp') return
-  t.ok('no-kv-offload' in (off.probe.request.params ?? {}))
-
-  const on = completionRequest({ 'kv-offload': true })
-  t.ok(on.supported)
-  if (!on.supported || on.probe.engine !== 'llm-llamacpp') return
-  t.ok('kv-offload' in (on.probe.request.params ?? {}))
-
-  const unset = completionRequest()
-  t.ok(unset.supported)
-  if (!unset.supported || unset.probe.engine !== 'llm-llamacpp') return
-  const params = unset.probe.request.params ?? {}
-  t.absent('kv-offload' in params)
-  t.absent('no-kv-offload' in params)
-})
-
-// `integrated` and `dedicated` restrict selection to a device class. The value
-// travels as written, so llama decides whether it can honour it.
-test('completion: a symbolic main-gpu travels as written', (t) => {
-  const plan = completionRequest({ 'main-gpu': 'dedicated' })
-
-  t.ok(plan.supported)
-  if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
-  t.is(plan.probe.request.params?.['main-gpu'], 'dedicated')
-})
-
-// Residency follows from how weights are read and how many sequences the cache
-// holds, so each of these reaches the fitter.
-test('completion: the settings that move device memory reach the engine', (t) => {
-  const plan = completionRequest({
-    load_mode: 'mmap',
-    parallel: 2,
-    'prefetch-weights': 'auto',
-    'tensor-read-lazy': 'on'
-  })
-
-  t.ok(plan.supported)
-  if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
-  const params = plan.probe.request.params ?? {}
-  t.is(params['load-mode'], 'mmap')
-  t.is(params['parallel'], '2')
-  t.is(params['prefetch-weights'], 'auto')
-  t.is(params['tensor-read-lazy'], 'on')
-})
-
-test('completion: a LoRA load is refused', (t) => {
-  t.alike(completionRequest({ lora: '/adapters/style.gguf' }), {
-    supported: false,
-    detail: 'unsupported load setting: lora'
-  })
+  t.is(plan.probe.request.marginBytes, 2048)
 })
 
 test('completion: a multimodal load is refused', (t) => {
@@ -266,7 +113,7 @@ test('completion: a multimodal load is refused', (t) => {
   )
 })
 
-test('completion: a sharded load is refused', (t) => {
+test('a sharded load is refused whatever engine would run it', (t) => {
   t.alike(
     createFitRequest({
       modelType: ModelType.llamacppCompletion,
@@ -278,13 +125,6 @@ test('completion: a sharded load is refused', (t) => {
   )
 })
 
-test('completion: a CPU load carries no device-memory evidence', (t) => {
-  t.alike(completionRequest({ device: 'cpu' }), {
-    supported: false,
-    detail: 'cpu loads carry no device-memory evidence'
-  })
-})
-
 test('completion: a clustered load is refused', (t) => {
   t.alike(completionRequest({ 'rpc-servers': '10.0.0.2:50052,10.0.0.3:50052' }), {
     supported: false,
@@ -292,17 +132,7 @@ test('completion: a clustered load is refused', (t) => {
   })
 })
 
-// A cache type llama does not have is llama's to reject, at the point where it
-// knows which types this build carries.
-test('completion: an unknown KV cache type travels to the engine', (t) => {
-  const plan = completionRequest({ 'cache-type-k': 'tbq4_0' })
-
-  t.ok(plan.supported)
-  if (!plan.supported || plan.probe.engine !== 'llm-llamacpp') return
-  t.is(plan.probe.request.params?.['cache-type-k'], 'tbq4_0')
-})
-
-test('embedding: forwards its own spellings and goes to its own engine', (t) => {
+test('embedding: forwards its own resolved load to its own engine', (t) => {
   const plan = createFitRequest({
     modelType: ModelType.llamacppEmbedding,
     modelPath: '/models/embed.gguf',
@@ -311,16 +141,12 @@ test('embedding: forwards its own spellings and goes to its own engine', (t) => 
   })
 
   t.ok(plan.supported)
-  if (!plan.supported) return
-  t.is(plan.probe.engine, 'embed-llamacpp')
-  t.alike(plan.probe.request, {
-    modelPath: '/models/embed.gguf',
-    params: {
-      'gpu-layers': '99',
-      'batch-size': '1024',
-      'flash-attn': 'auto'
-    }
-  })
+  if (!plan.supported || plan.probe.engine !== 'embed-llamacpp') return
+  const config = plan.probe.request.config ?? {}
+  t.is(plan.probe.request.modelPath, '/models/embed.gguf')
+  t.is(config['gpu_layers'], '99')
+  t.is(config['batch_size'], '1024')
+  t.is(config['pooling'], 'mean')
 })
 
 // === speech to text ===
@@ -749,15 +575,79 @@ test('audiogen: an incomplete stage set is refused', (t) => {
   )
 })
 
-test('audiogen: the minimax pipeline has no fitter', (t) => {
+const MINIMAX_ARTIFACTS = {
+  lmModelPath: '/models/mm3-lm-q8.gguf',
+  synthModelPath: '/models/mm3-synth-q8.gguf'
+}
+
+test('audiogen: carries the minimax model pair', (t) => {
+  const plan = createFitRequest({
+    modelType: ModelType.audiogenGgml,
+    modelPath: '',
+    modelConfig: { engine: 'minimax', useGPU: true, threads: 8, inferenceSteps: 12 },
+    artifacts: MINIMAX_ARTIFACTS,
+    isShardedModel: false,
+    marginBytes: 1024
+  })
+
+  t.ok(plan.supported)
+  if (!plan.supported) return
+  t.is(plan.probe.engine, 'audiogen-ggml')
+  t.alike(plan.probe.request, {
+    engine: 'minimax',
+    lmPath: '/models/mm3-lm-q8.gguf',
+    synthPath: '/models/mm3-synth-q8.gguf',
+    gpuLayers: 1,
+    threads: 8,
+    marginBytes: 1024
+  })
+})
+
+// The fitter projects `auto` for a positive layer count and `cpu` otherwise,
+// the same reading the load gives `useGPU`; a named device goes through as-is.
+test('audiogen: the minimax device follows the load', (t) => {
+  const cases = [
+    { config: {}, expected: { gpuLayers: 0 } },
+    { config: { useGPU: false }, expected: { gpuLayers: 0 } },
+    { config: { useGPU: true }, expected: { gpuLayers: 1 } },
+    { config: { device: 'gpu' }, expected: { device: 'gpu' } },
+    { config: { device: 'auto' }, expected: { device: 'auto' } },
+    { config: { device: 'cpu' }, expected: { device: 'cpu' } }
+  ]
+
+  for (const { config, expected } of cases) {
+    const plan = createFitRequest({
+      modelType: ModelType.audiogenGgml,
+      modelPath: '',
+      modelConfig: { engine: 'minimax', ...config },
+      artifacts: MINIMAX_ARTIFACTS,
+      isShardedModel: false
+    })
+    t.ok(plan.supported, JSON.stringify(config))
+    if (!plan.supported || plan.probe.engine !== 'audiogen-ggml') continue
+    t.alike(
+      plan.probe.request,
+      {
+        engine: 'minimax',
+        lmPath: MINIMAX_ARTIFACTS.lmModelPath,
+        synthPath: MINIMAX_ARTIFACTS.synthModelPath,
+        ...expected
+      },
+      JSON.stringify(config)
+    )
+  }
+})
+
+test('audiogen: an incomplete minimax pair is refused', (t) => {
   t.alike(
     createFitRequest({
       modelType: ModelType.audiogenGgml,
-      modelPath: '/models/minimax.gguf',
+      modelPath: '',
       modelConfig: { engine: 'minimax' },
+      artifacts: { lmModelPath: MINIMAX_ARTIFACTS.lmModelPath },
       isShardedModel: false
     }),
-    { supported: false, detail: 'the minimax pipeline has no fitter' }
+    { supported: false, detail: 'the minimax model pair is not resolved' }
   )
 })
 
@@ -864,14 +754,200 @@ test('diffusion: a configured upscaler is a second resident model the projection
   )
 })
 
-test('a model type with no fitter is refused by name', (t) => {
+test('ocr: carries both models and the placement the load uses', (t) => {
+  const plan = createFitRequest({
+    modelType: ModelType.ggmlOcr,
+    modelPath: '/models/recognizer.gguf',
+    modelConfig: {
+      pipelineType: 'doctr',
+      backendDevice: 'vulkan',
+      gpuDevice: 1,
+      nThreads: 4
+    },
+    artifacts: { detectorModelPath: '/models/detector.gguf' },
+    isShardedModel: false,
+    marginBytes: 1024
+  })
+
+  t.ok(plan.supported)
+  if (!plan.supported) return
+  t.alike(plan.probe, {
+    engine: 'ocr-ggml',
+    request: {
+      pathDetector: '/models/detector.gguf',
+      pathRecognizer: '/models/recognizer.gguf',
+      pipelineType: 'doctr',
+      nThreads: 4,
+      backendDevice: 'vulkan',
+      gpuDevice: 1,
+      marginBytes: 1024
+    }
+  })
+})
+
+test('ocr: a main-gpu selector reaches the fitter as the load sends it', (t) => {
+  const plan = createFitRequest({
+    modelType: ModelType.ggmlOcr,
+    modelPath: '/models/recognizer.gguf',
+    modelConfig: { backendDevice: 'vulkan', mainGpu: 'dedicated' },
+    artifacts: { detectorModelPath: '/models/detector.gguf' },
+    isShardedModel: false
+  })
+
+  t.ok(plan.supported)
+  if (!plan.supported || plan.probe.engine !== 'ocr-ggml') return
+  t.is(plan.probe.request.backendDevice, 'vulkan')
+  t.is(plan.probe.request['main-gpu'], 'dedicated')
+})
+
+test('ocr: an easyocr load names English when it names no language', (t) => {
+  const plan = createFitRequest({
+    modelType: ModelType.ggmlOcr,
+    modelPath: '/models/recognizer.gguf',
+    modelConfig: {},
+    artifacts: { detectorModelPath: '/models/detector.gguf' },
+    isShardedModel: false
+  })
+
+  t.ok(plan.supported)
+  if (!plan.supported || plan.probe.engine !== 'ocr-ggml') return
+  t.alike(plan.probe.request.langList, ['en'])
+})
+
+test('ocr: a load without its detector is refused', (t) => {
   t.alike(
     createFitRequest({
       modelType: ModelType.ggmlOcr,
-      modelPath: '/models/ocr.gguf',
+      modelPath: '/models/recognizer.gguf',
       modelConfig: {},
       isShardedModel: false
     }),
-    { supported: false, detail: `no fitter for model type: ${ModelType.ggmlOcr}` }
+    { supported: false, detail: 'the ocr detector is not resolved' }
+  )
+})
+
+test('translation: an IndicTrans load carries its model and generation config', (t) => {
+  const plan = createFitRequest({
+    modelType: ModelType.nmtcppTranslation,
+    modelPath: '/models/indictrans.bin',
+    modelConfig: { engine: 'IndicTrans', from: 'en', to: 'hi', beamsize: 4 },
+    isShardedModel: false,
+    marginBytes: 1024
+  })
+
+  t.ok(plan.supported)
+  if (!plan.supported || plan.probe.engine !== 'translation-nmtcpp') return
+  t.alike(plan.probe.request.files, { model: '/models/indictrans.bin' })
+  t.is(plan.probe.request.config.modelType, 'IndicTrans')
+  t.is(plan.probe.request.config['beamsize'], 4)
+  t.is(plan.probe.request.marginBytes, 1024)
+})
+
+test('translation: a Bergamot load finds its vocabulary beside the model', (t) => {
+  const plan = createFitRequest({
+    modelType: ModelType.nmtcppTranslation,
+    modelPath: '/models/enfr/model.enfr.intgemm.alphas.bin',
+    modelConfig: { engine: 'Bergamot', from: 'en', to: 'fr' },
+    isShardedModel: false
+  })
+
+  t.ok(plan.supported)
+  if (!plan.supported || plan.probe.engine !== 'translation-nmtcpp') return
+  t.alike(plan.probe.request.files, {
+    model: '/models/enfr/model.enfr.intgemm.alphas.bin',
+    srcVocab: '/models/enfr/vocab.enfr.spm',
+    dstVocab: '/models/enfr/vocab.enfr.spm'
+  })
+  t.is(plan.probe.request.config.modelType, 'Bergamot')
+})
+
+test('translation: a pivot load carries both models and their vocabularies', (t) => {
+  const plan = createFitRequest({
+    modelType: ModelType.nmtcppTranslation,
+    modelPath: '/models/esen/model.esen.intgemm.alphas.bin',
+    modelConfig: { engine: 'Bergamot', from: 'es', to: 'it' },
+    artifacts: {
+      srcVocabPath: '/models/esen/vocab.esen.spm',
+      dstVocabPath: '/models/esen/vocab.esen.spm',
+      pivotModelPath: '/models/enit/model.enit.intgemm.alphas.bin',
+      pivotSrcVocabPath: '/models/enit/vocab.enit.spm',
+      pivotDstVocabPath: '/models/enit/vocab.enit.spm'
+    },
+    isShardedModel: false
+  })
+
+  t.ok(plan.supported)
+  if (!plan.supported || plan.probe.engine !== 'translation-nmtcpp') return
+  t.alike(plan.probe.request.files, {
+    model: '/models/esen/model.esen.intgemm.alphas.bin',
+    srcVocab: '/models/esen/vocab.esen.spm',
+    dstVocab: '/models/esen/vocab.esen.spm',
+    pivotModel: '/models/enit/model.enit.intgemm.alphas.bin',
+    pivotSrcVocab: '/models/enit/vocab.enit.spm',
+    pivotDstVocab: '/models/enit/vocab.enit.spm'
+  })
+})
+
+test('a model type with no fitter is refused by name', (t) => {
+  t.alike(
+    createFitRequest({
+      modelType: ModelType.ggmlClassification,
+      modelPath: '/models/classifier.gguf',
+      modelConfig: {},
+      isShardedModel: false
+    }),
+    { supported: false, detail: `no fitter for model type: ${ModelType.ggmlClassification}` }
+  )
+})
+
+test('MOSS: fit projects the declared recording and matching decoding options', (t) => {
+  const plan = createFitRequest({
+    modelType: ModelType.mossTranscribe,
+    modelPath: '/models/moss.gguf',
+    modelConfig: { useGPU: true, maxThreads: 4, backendsDir: '/backends' },
+    transcriptionWorkload: { audioSeconds: 90, hotwords: ['Erin'], maxNewTokens: 0 },
+    marginBytes: 1024,
+    isShardedModel: false
+  })
+  t.alike(plan, {
+    supported: true,
+    probe: {
+      engine: 'asr-ggml',
+      request: {
+        engine: 'moss-transcribe',
+        modelPath: '/models/moss.gguf',
+        audioSeconds: 90,
+        hotwords: ['Erin'],
+        maxNewTokens: 0,
+        gpuLayers: 1,
+        threads: 4,
+        backendsDir: '/backends',
+        marginBytes: 1024
+      }
+    }
+  })
+})
+
+test('MOSS: missing workload cannot claim a fit; default load remains CPU', (t) => {
+  const base = {
+    modelType: ModelType.mossTranscribe,
+    modelPath: '/models/moss.gguf',
+    modelConfig: {},
+    isShardedModel: false
+  }
+  t.is(createFitRequest(base).supported, false)
+  const plan = createFitRequest({
+    ...base,
+    transcriptionWorkload: { audioSeconds: 30, prompt: 'Transcribe.' }
+  })
+  t.ok(plan.supported)
+  if (plan.supported && plan.probe.engine === 'asr-ggml') t.is(plan.probe.request.gpuLayers, 0)
+  t.is(
+    createFitRequest({
+      ...base,
+      modelType: ModelType.parakeetTranscription,
+      transcriptionWorkload: { audioSeconds: 30 }
+    }).supported,
+    false
   )
 })
