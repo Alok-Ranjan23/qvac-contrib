@@ -97,6 +97,24 @@ export const RESOURCE_TABLE: ResourceTable = {
     config: { langList: ['en'], detectorModelSrc: { $const: 'OCR_CRAFT' } }
   },
 
+  // Index 0 selects a GPU or falls back to CPU, so the text is the same everywhere; only the
+  // backend follows the hardware.
+  'ocr-main-gpu': {
+    on: ['desktop', 'electron'],
+    constant: { $const: 'OCR_LATIN' },
+    type: 'ggml-ocr',
+    config: {
+      langList: ['en'],
+      detectorModelSrc: { $const: 'OCR_CRAFT' },
+      backendDevice: 'vulkan',
+      mainGpu: 0
+    },
+    configOn: {
+      'desktop-macos': { backendDevice: 'metal' },
+      'electron-macos': { backendDevice: 'metal' }
+    }
+  },
+
   doctr: {
     on: ['desktop', 'electron'],
     constant: { $const: 'OCR_DOCTR' },
@@ -107,28 +125,28 @@ export const RESOURCE_TABLE: ResourceTable = {
     on: ['desktop', 'mobile'],
     constant: { $const: 'SMOLVLA_LIBERO_VISION_Q8' },
     type: 'ggml-vla',
-    config: { backend: 'cpu' }
+    config: { backend: ['cpu'] }
   },
 
   'vla-pi05': {
     on: ['desktop'],
     constant: { $const: 'PI05_BASE_Q_AGGRESSIVE' },
     type: 'ggml-vla',
-    config: { backend: 'cpu' }
+    config: { backend: ['cpu'] }
   },
 
   'vla-groot': {
     on: ['desktop'],
     constant: { $const: 'GROOT_Q5_VF16' },
     type: 'ggml-vla',
-    config: { backend: 'cpu' }
+    config: { backend: ['cpu'] }
   },
 
   'vla-groot-multi': {
     on: ['desktop'],
     constant: { $const: 'GROOT_MULTI_Q5_VF16' },
     type: 'ggml-vla',
-    config: { backend: 'cpu' }
+    config: { backend: ['cpu'] }
   },
 
   classification: {
@@ -150,13 +168,6 @@ export const RESOURCE_TABLE: ResourceTable = {
   echo: {
     type: 'echo',
     modelSrc: '',
-    skipPreDownload: true
-  },
-
-  /** The embedding model the multi-GPU split tests load. */
-  'multi-gpu-embeddings': {
-    constant: { $const: 'EMBEDDINGGEMMA_300M_Q8_0' },
-    type: 'llamacpp-embedding',
     skipPreDownload: true
   },
 
@@ -300,6 +311,25 @@ export const RESOURCE_TABLE: ResourceTable = {
     }
   },
 
+  'tts-moss-sfx': {
+    on: ['desktop', 'electron'],
+    constant: { $const: 'AUDIOGEN_MOSS_SFX_V2_Q8_0' },
+    constantSourceOnly: true,
+    type: 'tts-ggml',
+    config: { ttsEngine: 'moss-sfx', useGPU: true, seed: 42 }
+  },
+
+  'tts-moss-speech': {
+    on: ['desktop', 'electron'],
+    constant: { $const: 'TTS_MOSS_SPEECH_Q8_0' },
+    type: 'tts-ggml',
+    config: {
+      ttsEngine: 'moss-speech',
+      useGPU: true,
+      mossSpeechCodecModelSrc: { $const: 'TTS_CODEC_MOSS_SPEECH_F16' }
+    }
+  },
+
   'tts-audio8': {
     constant: { $const: 'TTS_LM_MULTILINGUAL_AUDIO8_Q8_0' },
     type: 'tts-ggml',
@@ -389,6 +419,16 @@ export const RESOURCE_TABLE: ResourceTable = {
     type: 'parakeet-transcription',
     config: {}
   },
+  'moss-transcribe': {
+    constant: { $const: 'MOSS_TRANSCRIBE_DIARIZE_Q8_0' },
+    type: 'moss-transcribe',
+    config: { useGPU: false, maxThreads: 4 }
+  },
+  'nemotron-diarization': {
+    constant: { $const: 'PARAKEET_NEMOTRON_3_DIARIZATION_Q8_0' },
+    type: 'parakeet-transcription',
+    config: { useGPU: false, maxThreads: 4 }
+  },
 
   'parakeet-eou': {
     constant: { $const: 'PARAKEET_EOU_120M_V1_Q4_0' },
@@ -443,7 +483,7 @@ export const RESOURCE_TABLE: ResourceTable = {
 
   diffusion: {
     // Every leg defines it for `model-fit-diffusion`; only desktop loads it.
-    skipPreDownloadOn: ['electron', 'snap', 'mobile'],
+    skipPreDownloadOn: ['electron', 'mobile'],
     constant: { $const: 'FLUX_2_KLEIN_4B_Q4_0' },
     type: 'sdcpp-generation',
     config: {
@@ -470,7 +510,7 @@ export const RESOURCE_TABLE: ResourceTable = {
 
   'audiogen-turbo': {
     // Every leg defines it for `model-fit-audiogen`; only desktop loads it.
-    skipPreDownloadOn: ['electron', 'snap', 'mobile'],
+    skipPreDownloadOn: ['electron', 'mobile'],
     type: 'audiogen-ggml',
     config: {
       textEncModelSrc: { $const: 'AUDIOGEN_QWEN3_EMBEDDING_0_6B_Q8_0' },

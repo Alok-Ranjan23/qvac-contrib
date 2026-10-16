@@ -38,15 +38,16 @@ Requirements:
 - Ubuntu 22 requires [g++](https://github.com/gcc-mirror/gcc) `>= 13`.
 - Vulkan runtime `>= 1.4`: Vulkan loader + a GPU driver with Vulkan support.
 - `libatomic.so.1`: required by the Linux `rocksdb-native` prebuilds used by the SDK's storage dependencies, including for CPU-only inference. Minimal container images may not include it.
+- `libibverbs.so.1`: required by `startRpcServer()`, even over TCP. RDMA also needs your NIC's provider package.
 
-On Debian or Ubuntu, install the atomic runtime with:
+On Debian or Ubuntu, install both with:
 
 ```bash
 sudo apt update
-sudo apt install -y libatomic1
+sudo apt install -y libatomic1 libibverbs1
 ```
 
-In a container build running as root, omit `sudo`. A missing library can prevent the worker from starting before any model loads; see [missing libatomic at startup](/resources/troubleshooting#startup-failure-missing-libatomicso1).
+In a container build running as root, omit `sudo`. A missing library can prevent the worker from starting before any model loads; see [missing libatomic at startup](/resources/troubleshooting#startup-failure-missing-libatomicso1) and [missing libibverbs](/resources/troubleshooting#rpc-server-failure-missing-libibverbsso1).
 
 On desktop Linux distributions (e.g., Ubuntu Desktop), these requirements are typically satisfied out of the box.
 
@@ -128,7 +129,7 @@ The `qvac` CLI itself runs on desktops only. The SDK additionally targets Androi
 
 | Requirement | Notes |
 | --- | --- |
-| Node.js `>= 18.0.0` | Node 18 is end-of-life; prefer `>= 20`. Matches `engines.node` of `@qvac/cli`. |
+| Node.js `^22.21.0 \|\| >=24.9.0` | Bundling (`qvac bundle sdk`) needs Node 22.21+ on the 22 line or 24.9+. Matches `engines.node` of `@qvac/cli`. |
 | Supported CLI host | `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-x64`. The CLI cannot run on mobile; those are deploy targets only. |
 | Total RAM `>= 2 GB` (recommended `>= 4 GB`) | Below 4 GB, most LLMs will fail to load. |
 
@@ -162,7 +163,6 @@ Only required if you use the corresponding feature. The checker warns when they 
 | --- | --- |
 | `ffmpeg` | Microphone capture, transcription examples, and the built-in audio decoder. Install from [ffmpeg.org](https://ffmpeg.org/download.html). |
 | [Bare](https://bare.pears.com) runtime | Running the SDK under Bare directly. |
-| [Bun](https://bun.sh) | Building the SDK from source or running the monorepo development workflow. |
 
 ## Project
 
