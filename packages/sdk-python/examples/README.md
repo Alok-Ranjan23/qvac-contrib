@@ -39,6 +39,10 @@ python examples/vla.py [path-to-smolvla.gguf]
 
 Models download over P2P from the registry on first use and are cached locally.
 
+A few examples talk to a third-party store rather than a built-in one. Each guards
+its import and names what to install; today that means `pip install pymongo`,
+declared as the `examples` extra.
+
 ## Index
 
 | Example                          | Mirrors (`packages/sdk/examples/…`)                    | Public API shown                                                                                                          |
@@ -51,10 +55,12 @@ Models download over P2P from the registry on first use and are cached locally.
 | `completion_orchestrate.py`      | `tools/llamacpp-native-tools.ts` (worker-orchestrated) | `completion_orchestrate` with tool `handler`s                                                                             |
 | `completion_deferred_tools.py`   | `tools/llamacpp-deferred-tools.ts`                     | `defer_loading` + `group` tools kept out of the prompt; worker-run `tool_search` via `completion_orchestrate`             |
 | `kv_cache.py`                    | `kv-cache-example.ts`                                  | `kv_cache` on `completion`: auto-keyed reuse across turns, compared against an uncached replay                            |
+| `finetune.py`                    | `finetune/llamacpp-finetune.ts`                        | `finetune_with_progress` LoRA run with per-tick progress; `finetune` with `operation` to pause and resume                 |
 | `cancel.py`                      | `cancel-by-request-id.ts`                              | `cancel` by `request_id`, `InferenceCancelledError`                                                                       |
 | `embeddings.py`                  | `embed-p2p.ts`                                         | `embed` (`EmbedRequest`)                                                                                                  |
 | `rag_managed.py`                 | `rag/rag-hyperdb/ingest.ts`                            | `rag` (`RagRequest`) — `ingest`, `search`, `closeWorkspace` against the built-in vector store                             |
 | `rag_turbovec.py`                | `rag/rag-turbovec.ts`                                  | `vector_index` (`VectorIndexRequest`) — TurboVec index over `embed` vectors, with snapshot `write`/`load`                 |
+| `rag_mongodb.py`                 | `rag/rag-mongodb.ts`                                   | `embed` into MongoDB Atlas Vector Search: `$vectorSearch` with a pre-filter (needs `pymongo`)                             |
 | `translation.py`                 | `translation/translation-llm.ts`                       | `translate`                                                                                                               |
 | `transcription.py`               | `transcription/whispercpp-filesystem.ts`               | `transcribe` (`TranscribeRequest`)                                                                                        |
 | `text_to_speech.py`              | `tts/supertonic.ts`                                    | `text_to_speech` (`TextToSpeechRequest`)                                                                                  |

@@ -129,11 +129,7 @@ TurboVec quantises vectors (`VectorIndexStorage.TURBOVEC_Q4` by default, `TURBOV
 
 #### MongoDB
 
-This example needs two things the SDK does not provide: the MongoDB driver in your workspace, and a deployment with Atlas Vector Search. Install the driver (the version these docs are tested against):
-
-```bash
-npm i "mongodb@^7.5.0"
-```
+This example needs two things the SDK does not provide: a MongoDB driver, and a deployment with Atlas Vector Search. Install the driver for the language you are using — `npm i "mongodb@^7.5.0"` for JavaScript and TypeScript, or `pip install "pymongo>=4.13"` for Python. Those are the versions these docs are tested against.
 
 One way to get a deployment is the Atlas local container:
 
@@ -158,6 +154,14 @@ The following script stores each document in MongoDB alongside its vector, build
 <WrapCode>
 
 ```ts file=<rootDir>/packages/sdk/examples/rag/rag-mongodb.ts title="rag-mongodb.ts" lineNumbers
+```
+</WrapCode>
+</Tab>
+
+<Tab value="python" label="Python">
+<WrapCode>
+
+```python file=<rootDir>/packages/sdk-python/examples/rag_mongodb.py title="rag_mongodb.py" lineNumbers
 ```
 </WrapCode>
 </Tab>
