@@ -125,6 +125,26 @@ The following script loads a `parallel: 4` model, fires four completions at once
 
 ### Tool call
 
+The JavaScript and TypeScript examples in this section and in [Deferred tool loading](#deferred-tool-loading) import their tool schemas and a mock executor from a sibling `shared` module. Save it next to the example — as `shared.js` for JavaScript, `shared.ts` for TypeScript. Nothing else to install: the schemas use [`zod`](https://zod.dev), which `@qvac/sdk` already brings into your project. Import it rather than installing your own copy, so your schemas and the SDK share one `zod` instance.
+
+<Tabs>
+<Tab value="js" label="JavaScript" default>
+<WrapCode>
+
+```js file=<rootDir>/packages/sdk/dist/examples/tools/shared.js title="shared.js" lineNumbers
+```
+</WrapCode>
+</Tab>
+
+<Tab value="ts" label="TypeScript">
+<WrapCode>
+
+```ts file=<rootDir>/packages/sdk/examples/tools/shared.ts title="shared.ts" lineNumbers
+```
+</WrapCode>
+</Tab>
+</Tabs>
+
 The following script shows how to provide tool definitions to `completion()`, consume the streaming output, and read the parsed tool calls.
 
 <Tabs>
@@ -177,6 +197,8 @@ choice harder. Setting `deferLoading: true` on a tool keeps it registered but
 leaves its parameter schema out of the prompt: the model sees only its name and
 description, in a compact catalog carried by a built-in `tool_search` tool, and
 loads the schema when it needs it.
+
+The JavaScript and TypeScript examples below import the same `shared` module shown under [Tool call](#tool-call); save it alongside this example too.
 
 <Tabs>
 <Tab value="js" label="JavaScript" default>
