@@ -47,9 +47,13 @@ export function createLlamaFitRequest(params: LlamaFitRequestParams): FitRequest
   }
 
   if (loadKind === 'completion') {
+    // The addon consumes the checkpoint count before llama.cpp's argument
+    // parser on load but not on fit, where it is rejected as unknown. It sizes
+    // host-RAM state the fitter does not project either way.
+    const { cache_checkpoints: _cacheCheckpoints, ...fitConfig } = modelConfig
     const llm: LlmLlamacpp.FitRequest = {
       ...request,
-      config: transformLlmConfig(modelConfig as LlmConfig)
+      config: transformLlmConfig(fitConfig as LlmConfig)
     }
     return { supported: true, probe: { engine: 'llm-llamacpp', request: llm } }
   }
