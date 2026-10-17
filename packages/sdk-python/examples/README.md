@@ -37,11 +37,15 @@ python examples/plugins.py <model-src>
 python examples/vla.py [path-to-smolvla.gguf]
 ```
 
+`finetune.py` is the exception: it trains on `train.jsonl` and `eval.jsonl` from
+this folder, so swap in your own data by replacing those two files.
+
 Models download over P2P from the registry on first use and are cached locally.
 
-A few examples talk to a third-party store rather than a built-in one. Each guards
-its import and names what to install; today that means `pip install pymongo`,
-declared as the `examples` extra.
+A few examples reach for a third-party store rather than a built-in one. Each
+guards the lookup and names what to install; today that means `pip install
+pymongo` and `pip install sqliteai-vector`, declared together as the `examples`
+extra.
 
 ## Index
 
@@ -61,6 +65,7 @@ declared as the `examples` extra.
 | `rag_managed.py`                 | `rag/rag-hyperdb/ingest.ts`                            | `rag` (`RagRequest`) — `ingest`, `search`, `closeWorkspace` against the built-in vector store                             |
 | `rag_turbovec.py`                | `rag/rag-turbovec.ts`                                  | `vector_index` (`VectorIndexRequest`) — TurboVec index over `embed` vectors, with snapshot `write`/`load`                 |
 | `rag_mongodb.py`                 | `rag/rag-mongodb.ts`                                   | `embed` into MongoDB Atlas Vector Search: `$vectorSearch` with a pre-filter (needs `pymongo`)                             |
+| `rag_sqlite.py`                  | `rag/rag-sqlite.ts`                                    | `embed` into SQLite with the vector extension: quantized `vector_quantize_scan` top-k (needs `sqliteai-vector`)           |
 | `translation.py`                 | `translation/translation-llm.ts`                       | `translate`                                                                                                               |
 | `transcription.py`               | `transcription/whispercpp-filesystem.ts`               | `transcribe` (`TranscribeRequest`)                                                                                        |
 | `text_to_speech.py`              | `tts/supertonic.ts`                                    | `text_to_speech` (`TextToSpeechRequest`)                                                                                  |

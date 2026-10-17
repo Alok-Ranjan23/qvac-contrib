@@ -169,13 +169,17 @@ The following script stores each document in MongoDB alongside its vector, build
 
 #### SQLite
 
-This example needs the SQLite WASM build that ships the vector extension, pinned to the version these docs are tested against:
+This example needs the vector extension for SQLite, which arrives differently per language. JavaScript and TypeScript use a SQLite WASM build that has the extension compiled in; Python uses the standard library's `sqlite3` module and loads the extension from a prebuilt binary. Install the one for the language you are using:
 
 ```bash
+# JavaScript and TypeScript
 npm i "@sqliteai/sqlite-wasm@3.50.4-sync.0.8.30-vector.0.9.23"
+
+# Python
+pip install "sqliteai-vector>=1.1"
 ```
 
-The database is in-memory, so there is nothing else to set up.
+Those are the versions these docs are tested against. Loading an extension also needs a Python configured with `--enable-loadable-sqlite-extensions`. Most distribution and python.org builds are; `pyenv`'s default build is not, and no package you install changes that — pass `-p` to `virtualenv` (or `--python` to `uv venv`) to base the environment on an interpreter that qualifies. The example checks before it starts and tells you if yours does not. The database is in-memory, so there is nothing else to set up.
 
 The following script shows the same workflow using `embed()` plus a SQLite vector index:
 
@@ -192,6 +196,14 @@ The following script shows the same workflow using `embed()` plus a SQLite vecto
 <WrapCode>
 
 ```ts file=<rootDir>/packages/sdk/examples/rag/rag-sqlite.ts title="rag-sqlite.ts" lineNumbers
+```
+</WrapCode>
+</Tab>
+
+<Tab value="python" label="Python">
+<WrapCode>
+
+```python file=<rootDir>/packages/sdk-python/examples/rag_sqlite.py title="rag_sqlite.py" lineNumbers
 ```
 </WrapCode>
 </Tab>

@@ -48,6 +48,7 @@ STUBBABLE = frozenset(
         "pandas",
         "IPython",
         "pymongo",
+        "sqlite_vector",
     }
 )
 
