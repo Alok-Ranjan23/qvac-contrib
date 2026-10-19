@@ -25,10 +25,11 @@ npm run benchmarks:vlm -- --llm /models/Qwen3-8B-Q4_K_M.gguf --suite text
 4. [Options](#4--options)
 5. [What is held equal between the engines](#5--what-is-held-equal-between-the-engines)
 6. [Text suite](#6--text-suite)
-7. [Output](#7--output)
-8. [Comparing machines](#8--comparing-machines)
-9. [Troubleshooting](#9--troubleshooting)
-10. [Limitations](#10--limitations)
+7. [Speculative decoding with #4849 on another host](#7--speculative-decoding-with-4849-on-another-host)
+8. [Output](#8--output)
+9. [Comparing machines](#9--comparing-machines)
+10. [Troubleshooting](#10--troubleshooting)
+11. [Limitations](#11--limitations)
 
 ---
 
@@ -146,11 +147,11 @@ npm run benchmarks:vlm -- --llm … --mmproj … --sync-fixture
 # Text suite only, the standard matrix: p512/p2048 × n128, concurrency 1–16, speculation
 npm run benchmarks:vlm -- --llm ~/models/qwen3-8b-q4_k_m.gguf --suite text --text-preset standard
 
-# Speculative decoding on both engines (addon from #4849's CI prebuild, see §6):
+# Speculative decoding on both engines with an addon built from #4849 (full steps: §7):
 # an MTP model gets draft-mtp automatically; a DFlash --draft adds draft-dflash
 npm run benchmarks:vlm -- --llm ~/models/Qwen3.8-27B-UD-Q4_K_XL.gguf --suite text --text-suites spec \
   --draft ~/models/Qwen3.8-27B-DFlash2-Q8_0.gguf --spec-draft-n-max 7 \
-  --addon-prebuild ~/Downloads/prebuild-llm-llamacpp-darwin-arm64
+  --addon-prebuild ~/qvac-pr4849/packages/llm-llamacpp/prebuilds
 
 # Classic draft model (llama-server only; same vocabulary as --llm)
 npm run benchmarks:vlm -- --llm ~/models/qwen3-8b-q4_k_m.gguf --suite text --text-suites spec \
@@ -206,7 +207,7 @@ Presets (`config.cjs`) set how many images run:
   - `--image-max-tokens` (default: the addon's cap for the projector)
   - `--fit` (default `off`)
 - **Engine source:** `--fabric-ref <tag|sha>` builds llama-server from a different
-  qvac-fabric tag or commit. Use it when §9 says so, or to test another engine version.
+  qvac-fabric tag or commit. Use it when §10 says so, or to test another engine version.
 - **Addon prebuild:**
   - `--addon-version <ver|latest>` picks the npm version to install when `prebuilds/` has
     none. There is no automatic fallback to another version.
@@ -310,12 +311,11 @@ DFlash draft (`general.architecture = dflash`) or `draft-simple` otherwise.
 default (the addon lowers it to fit a batch, with a warning).
 
 **Addon builds without #4849.** Until #4849 is released, the addon's speculative modes need
-a build from that PR. Download the PR's `prebuild-llm-llamacpp-<platform>-<arch>` artifact
-from its CI run (the PR's *Checks* tab, or `gh run download <run-id> --repo tetherto/qvac
---name prebuild-llm-llamacpp-darwin-arm64 --dir <dir>`) and pass `--addon-prebuild <dir>`,
-or build the addon from the PR branch. With a build that lacks it, the addon's speculative
-rows fail with `invalid argument: --spec-type` and are listed under *Failed
-configurations*; everything else still runs.
+a build from that PR: build it in its own worktree (§7), or download the PR's
+`prebuild-llm-llamacpp-<platform>-<arch>` CI artifact, and pass it with
+`--addon-prebuild`. With a build that lacks it, the addon's speculative rows fail with
+`invalid argument: --spec-type` and are listed under *Failed configurations*; everything
+else still runs.
 
 **Held equal**, beyond §5:
 
@@ -340,7 +340,115 @@ configurations*; everything else still runs.
 `llama-server-text-<backend>.log`. Re-render or merge hosts with
 `node benchmarks/vlm-benchmark/text-report.cjs --dir <dir>[,<dir>…] --out <dir>`.
 
-## 7 · Output
+## 7 · Speculative decoding with #4849 on another host
+
+This reproduces [#4849](https://github.com/tetherto/qvac/pull/4849)'s speed setup: MTP and
+DFlash on Qwen3.8-27B, on both engines. It uses two git worktrees of one clone: one builds
+the addon from #4849, the other runs this benchmark against that build.
+
+**Host:** ≥ 32 GB of GPU or unified memory (the 27B model is 17.6 GB, the draft 2.1 GB,
+plus KV cache) and ~25 GB of free disk for the models. Everything in §2, plus what
+building the addon needs (`packages/llm-llamacpp/build.md`):
+
+- `bare-make`: `npm install -g bare-make`
+- vcpkg at tag `2025.12.12`, with `VCPKG_ROOT` set:
+  ```bash
+  git clone --branch 2025.12.12 --single-branch https://github.com/microsoft/vcpkg.git ~/vcpkg
+  ~/vcpkg/bootstrap-vcpkg.sh          # Windows: ~\vcpkg\bootstrap-vcpkg.bat
+  export VCPKG_ROOT=~/vcpkg           # Windows: $env:VCPKG_ROOT = "$HOME\vcpkg"
+  ```
+- macOS: Apple clang ≥ 15 (not Homebrew LLVM). Linux: clang with libc++, CMake.
+  Windows: Visual Studio 2022 with C++, Clang and LLVM tools, and the Vulkan SDK.
+
+The vcpkg registry (`tetherto/qvac-registry-vcpkg`) is public; no token is needed.
+
+**1. One clone, two worktrees.**
+
+```bash
+git clone git@github.com:tetherto/qvac.git ~/qvac
+cd ~/qvac
+git fetch origin feat/llm-llamacpp-mtp feat/llm-bench-vs-llama-server
+# the addon from #4849
+git worktree add --track -b feat/llm-llamacpp-mtp ~/qvac-pr4849 origin/feat/llm-llamacpp-mtp
+# this benchmark
+git worktree add --track -b feat/llm-bench-vs-llama-server ~/qvac-bench origin/feat/llm-bench-vs-llama-server
+```
+
+In an existing clone, skip the `git clone`. Update either worktree later with `git -C
+<worktree> pull`.
+
+**2. Build the addon in the #4849 worktree.**
+
+```bash
+cd ~/qvac-pr4849/packages/llm-llamacpp
+npm install
+npm run build
+ls prebuilds/                       # e.g. darwin-arm64/qvac__llm-llamacpp.bare
+```
+
+`npm run build` compiles the TypeScript wrapper and the native addon (`bare-make
+generate`, `build`, `install`); the first build fetches the vcpkg dependencies and takes a
+while. The output lands in `prebuilds/<platform>-<arch>/`. If the build is not possible on
+the host, download the PR's CI artifact instead (`gh run download <run-id> --repo
+tetherto/qvac --name prebuild-llm-llamacpp-<platform>-<arch> --dir <dir>`; the run is
+linked in the PR's *Checks* tab) and use that directory in step 4.
+
+**3. Download #4849's models.** #4849 names the files as "Qwen3.8-27B UD-Q4_K_XL" and
+"`incoai/Qwen3.8-27B-DFlash2` Q8_0". Pinned to the repository revisions below:
+
+| File | Source (revision) | Size | sha256 |
+|---|---|---|---|
+| `Qwen3.8-27B-UD-Q4_K_XL.gguf` (target, keeps its MTP layers) | [unsloth/Qwen3.8-27B-GGUF](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF) (`4ca72078`) | 17,559,178,144 B | `3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e` |
+| `Qwen3.8-27B-DFlash2-Q8_0.gguf` (DFlash draft, `general.architecture = dflash`) | [incoai/Qwen3.8-27B-DFlash2-GGUF](https://huggingface.co/incoai/Qwen3.8-27B-DFlash2-GGUF) (`51962825`) | 2,056,414,816 B | `c18e800daedc59ca68fd13b6a856d795746af6d399a9279ac6a277d1d422f87e` |
+| `Qwen3.5-0.8B-MTP-Q8_0.gguf` (optional small check; #4849's integration-test model) | [ggml-org/Qwen3.5-0.8B-GGUF](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF) (`8fea6208`) | 833,592,096 B | `37ae482d336108d23516fa35e8e0c4126688d81018b87178a18d752a1357814f` |
+
+```bash
+mkdir -p ~/models && cd ~/models
+curl -L --fail -o Qwen3.8-27B-UD-Q4_K_XL.gguf \
+  https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-Q4_K_XL.gguf
+curl -L --fail -o Qwen3.8-27B-DFlash2-Q8_0.gguf \
+  https://huggingface.co/incoai/Qwen3.8-27B-DFlash2-GGUF/resolve/51962825493a48b846b40126d35c799ac4093ad0/Qwen3.8-27B-DFlash2-Q8_0.gguf
+curl -L --fail -o Qwen3.5-0.8B-MTP-Q8_0.gguf \
+  https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/resolve/8fea620810c4afa23dd6443f999a48574c1611a3/Qwen3.5-0.8B-Q8_0.gguf
+shasum -a 256 *.gguf                # Linux: sha256sum; Windows: certutil -hashfile <file> SHA256
+```
+
+Use the 27B files only from these repositories: unsloth's other Qwen GGUFs (the Qwen3.5
+quants, for example) strip the MTP layers, and `incoai/Qwen3.8-27B-DFlash2` itself holds
+only safetensors.
+
+**4. Run the benchmark from its worktree against the #4849 build.**
+
+```bash
+cd ~/qvac-bench/packages/llm-llamacpp
+# optional wiring check on the small model (draft-mtp on both engines, a few minutes)
+npm run benchmarks:vlm -- --llm ~/models/Qwen3.5-0.8B-MTP-Q8_0.gguf --suite text \
+  --text-suites spec --spec-gen 512 --addon-prebuild ~/qvac-pr4849/packages/llm-llamacpp/prebuilds
+# #4849's setup: draft-mtp and draft-dflash on both engines, draft length 7
+npm run benchmarks:vlm -- --llm ~/models/Qwen3.8-27B-UD-Q4_K_XL.gguf \
+  --draft ~/models/Qwen3.8-27B-DFlash2-Q8_0.gguf --spec-draft-n-max 7 \
+  --suite text --text-suites spec --text-preset standard \
+  --addon-prebuild ~/qvac-pr4849/packages/llm-llamacpp/prebuilds --host-label <name>
+```
+
+- The run picks the modes from the files: `ngram-simple`, `draft-mtp` (the target has MTP
+  layers) and `draft-dflash` (the draft is a DFlash model), plus each engine's baseline.
+  Check the `text:` line it prints at the start.
+- `--addon-prebuild` swaps the #4849 build into this worktree's `prebuilds/` for the run
+  and restores it on exit. #4849 changes the native addon, not the generated `index.js`,
+  so this worktree's JS works with it.
+- The GPU API defaults to Metal on macOS and Vulkan elsewhere; add `--gpu-api cuda` on
+  NVIDIA. Drop `--text-suites spec` to add single-stream and concurrency results for the
+  27B model; add `--spec-concurrency 1,4` for speculation under concurrency.
+- Results land in `~/qvac-bench/packages/llm-llamacpp/benchmarks/vlm-benchmark/results/`
+  (§8). The addon rows' `source_ref` names the prebuild directory, which records that the
+  #4849 build ran.
+
+**5. Clean up** when done: `git -C ~/qvac worktree remove ~/qvac-pr4849` (and
+`~/qvac-bench`), then `git -C ~/qvac branch -D feat/llm-llamacpp-mtp
+feat/llm-bench-vs-llama-server`.
+
+## 8 · Output
 
 Each run writes to `benchmarks/vlm-benchmark/results/<timestamp>-<host>/`, which git
 ignores:
@@ -390,7 +498,7 @@ How each metric is measured:
   - On macOS, the server's RSS is sampled every 100 ms, so its true peak can be slightly
     higher.
 
-## 8 · Comparing machines
+## 9 · Comparing machines
 
 1. Run the same command on each machine, with a different `--host-label` on each.
 2. Copy every machine's `vlm-matrix-<host>-<backend>.log` and `prov-*.md` files into one
@@ -420,7 +528,7 @@ For results you can compare across machines:
   fabric tag. Both appear in the report's *Sources* table.
 - On laptops, plug in power and close heavy apps.
 
-## 9 · Troubleshooting
+## 10 · Troubleshooting
 
 - **`fixture images missing`:** copy the images into `fixture/`, or pass `--fixture-dir`.
   See §2.
@@ -448,14 +556,14 @@ For results you can compare across machines:
   use (`draft-mtp` on a model without MTP layers, `draft-simple` with a draft of another
   vocabulary) or a context too large for memory at a high `--concurrency`.
 - **`invalid argument: --spec-type` from the addon:** the addon build has no speculative
-  decoding; see *Addon builds without #4849* in §6.
+  decoding; build one from #4849 as in §7.
 - **`prompt calibration failed`:** the model could not be loaded for the calibration pass;
   the error above it says why. The rest of the text suite is skipped on that backend.
 - **A speculative row shows no acceptance:** the mode drafted nothing. `ngram-*` modes only
   draft once the output repeats text already in the context; short generations may never
   get there. Raise `--spec-gen`.
 
-## 10 · Limitations
+## 11 · Limitations
 
 - **Desktop only.** Phones run the addon through the CI workflow (`README.md` §1); there is
   no llama-server on phones.
