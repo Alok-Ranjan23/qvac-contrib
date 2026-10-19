@@ -5,9 +5,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import {
+  SLICE_DEFINITIONS,
+  expectedAddonFile,
+  slicePlatformPackages
+} from '../../../scripts/ci/slice-platform-packages.mjs'
 
 const checker = fileURLToPath(new URL('./verify-prebuild-linking.mjs', import.meta.url))
-const moduleName = 'qvac__diffusion-cpp'
 
 // Minimal ELF fixture with a dynamic string table and DT_NEEDED records.
 // Only dependency names vary between the packaging failure cases.
@@ -41,6 +45,7 @@ function elf(dependencies) {
 function fixture(t, { arch = 'arm64', cuda = ['libcudart.so.13'], addon = ['libc.so.6'] } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'diffusion-prebuild-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const moduleName = `qvac__diffusion-cpp-linux-${arch}`
   const target = path.join(directory, `linux-${arch}`)
   const backends = path.join(target, moduleName)
   fs.mkdirSync(backends, { recursive: true })
@@ -81,3 +86,41 @@ for (const arch of ['arm64', 'x64']) {
     assert.match(result.output, /addon hard-links libcudart/)
   })
 }
+
+test('split publication retains CUDA and Vulkan in both Linux platform packages', (t) => {
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'diffusion-slices-'))
+  t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
+  const meta = { name: '@qvac/diffusion-cpp', version: '0.30.0' }
+  fs.writeFileSync(path.join(workdir, 'package.json'), JSON.stringify(meta))
+  for (const definition of SLICE_DEFINITIONS) {
+    for (const host of definition.hosts) {
+      const hostDir = path.join(workdir, 'prebuilds', host)
+      fs.mkdirSync(hostDir, { recursive: true })
+      const addonName = expectedAddonFile(meta.name, host)
+      fs.writeFileSync(path.join(hostDir, addonName), elf(['libc.so.6']))
+      if (!host.startsWith('linux-')) continue
+      const backends = path.join(hostDir, addonName.replace(/\.bare$/, ''))
+      fs.mkdirSync(backends)
+      fs.writeFileSync(
+        path.join(backends, 'libqvac-diffusion-ggml-vulkan.so'),
+        elf(['libvulkan.so.1'])
+      )
+      fs.writeFileSync(
+        path.join(backends, 'libqvac-diffusion-ggml-cuda.so'),
+        elf(['libcudart.so.13'])
+      )
+    }
+  }
+  const slices = slicePlatformPackages({ workdir, outDir: path.join(workdir, 'slices') })
+  for (const arch of ['x64', 'arm64']) {
+    const directory = slices.find((slice) => slice.endsWith(`-linux-${arch}`))
+    assert.ok(directory, `linux-${arch} platform package exists`)
+    const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'))
+    assert.equal(manifest.name, `@qvac/diffusion-cpp-linux-${arch}`)
+    assert.equal(manifest.version, meta.version)
+    const result = spawnSync(process.execPath, [checker, path.join(directory, 'prebuilds')], {
+      encoding: 'utf8'
+    })
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+  }
+})

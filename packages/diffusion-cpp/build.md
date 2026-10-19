@@ -106,7 +106,8 @@ If you want to build the addon from source instead of using pre-built packages, 
    This command runs the complete build pipeline:
    - `bare-make generate` - Generates build files and downloads/builds vcpkg dependencies (including `stable-diffusion.cpp` and `ggml`)
    - `bare-make build` - Compiles the native addon
-   - `bare-make install` - Installs the built addon into `prebuilds/`
+   - `bare-make install` - Installs the built addon into `prebuilds/<host>/` as `qvac__diffusion-cpp-<host>.bare`
+   - `npm run link:platform` - Stages that directory as `node_modules/@qvac/diffusion-cpp-<host>`, which is what `binding.js` loads
 
 > **First build note:** The vcpkg step clones and compiles `stable-diffusion.cpp` and `ggml` from source, which can take **5–15 minutes** depending on your machine and internet connection.
 
@@ -159,6 +160,7 @@ npm run build:ts
 bare-make generate -D SD_CUDA=ON -D CMAKE_CUDA_ARCHITECTURES="$CUDAARCHS"
 bare-make build
 bare-make install
+npm run link:platform
 ```
 
 `CUDAARCHS` also reaches the vcpkg ggml sub-build; the top-level architecture
@@ -169,8 +171,8 @@ the vcpkg logs and ggml `CMakeCache.txt`. The tested Spark toolchain uses LLVM
 nvcc's `-allow-unsupported-compiler` flag for the newer Clang host compiler.
 
 Ensure `libqvac-diffusion-ggml-cuda.so` is installed under
-`prebuilds/linux-arm64/qvac__diffusion-cpp/` on Spark or
-`prebuilds/linux-x64/qvac__diffusion-cpp/` on an x64 PC, and that `ldd`
+`prebuilds/linux-arm64/qvac__diffusion-cpp-linux-arm64/` on Spark or
+`prebuilds/linux-x64/qvac__diffusion-cpp-linux-x64/` on an x64 PC, and that `ldd`
 resolves its CUDA libraries. GPU selection and weight residency are
 independent; the CUDA example explicitly sets both to `cuda0`. See the
 package README's measured CUDA recipe for assets and generation commands.

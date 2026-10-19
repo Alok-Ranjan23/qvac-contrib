@@ -15,11 +15,20 @@ async function main() {
   const height = Number(process.env.FLUX_HEIGHT || 480)
   const count = Number(process.env.FLUX_IMAGES || 1)
   const seed = Number(process.env.FLUX_SEED || 0)
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || width % 32 || height % 32) {
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width <= 0 ||
+    height <= 0 ||
+    width % 32 ||
+    height % 32
+  ) {
     throw new Error('FLUX_WIDTH and FLUX_HEIGHT must be positive multiples of 32')
   }
   if (!Number.isInteger(count) || count <= 0 || !Number.isSafeInteger(seed) || seed < 0) {
-    throw new Error('FLUX_IMAGES must be a positive integer and FLUX_SEED a nonnegative safe integer')
+    throw new Error(
+      'FLUX_IMAGES must be a positive integer and FLUX_SEED a nonnegative safe integer'
+    )
   }
   const files = {
     model: path.join(modelsDir, 'flux-2-klein-4b-Q8_0.gguf'),
@@ -51,7 +60,9 @@ async function main() {
       let png
       const start = Date.now()
       const response = await model.run({
-        prompt: process.env.FLUX_PROMPT || 'A cozy wooden cabin beside a still alpine lake at sunrise, pine forest and snowy mountain peaks reflected in the water, realistic landscape photograph.',
+        prompt:
+          process.env.FLUX_PROMPT ||
+          'A cozy wooden cabin beside a still alpine lake at sunrise, pine forest and snowy mountain peaks reflected in the water, realistic landscape photograph.',
         width,
         height,
         steps: 4,
@@ -61,10 +72,12 @@ async function main() {
         seed
       })
       response.on('stats', (stats) => console.log('Native stats:', JSON.stringify(stats)))
-      await response.onUpdate((data) => {
-        if (data instanceof Uint8Array) png = data
-        else console.log('Progress:', data)
-      }).await()
+      await response
+        .onUpdate((data) => {
+          if (data instanceof Uint8Array) png = data
+          else console.log('Progress:', data)
+        })
+        .await()
       const elapsedMs = Date.now() - start
       if (!png) throw new Error('FLUX.2 completed without a PNG')
       const file = path.join(outputDir, `flux2-cuda-${width}x${height}-${index}.png`)
