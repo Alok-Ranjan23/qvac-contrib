@@ -31,6 +31,8 @@
 
 ### Changed
 
+- Linux builds request CUDA through a platform-qualified vcpkg dependency
+  feature, matching Fabric; CI supplies the toolkit without extra CMake flags.
 - Both Linux prebuilds require the CUDA module alongside Vulkan, in PR
   validation and the release artifact build, while retaining the addon's
   independence from GPU runtime libraries.

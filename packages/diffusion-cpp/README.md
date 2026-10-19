@@ -120,7 +120,11 @@ npm install
 npm run build
 ```
 
-CUDA builds can be generated explicitly:
+Linux source builds require the CUDA toolkit and include the CUDA backend
+through the platform-qualified dependency feature in `vcpkg.json`, matching
+`@qvac/fabric`. CI supplies the toolkit with `includeCuda` and
+`includeCudaArm64`; no platform CMake flag mapping is required. The explicit
+CUDA build command remains available:
 
 ```bash
 npm run build:cuda
