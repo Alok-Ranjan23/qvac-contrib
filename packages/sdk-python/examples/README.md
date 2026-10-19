@@ -59,6 +59,7 @@ extra.
 | `completion_orchestrate.py`      | `tools/llamacpp-native-tools.ts` (worker-orchestrated) | `completion_orchestrate` with tool `handler`s                                                                             |
 | `completion_deferred_tools.py`   | `tools/llamacpp-deferred-tools.ts`                     | `defer_loading` + `group` tools kept out of the prompt; worker-run `tool_search` via `completion_orchestrate`             |
 | `kv_cache.py`                    | `kv-cache-example.ts`                                  | `kv_cache` on `completion`: auto-keyed reuse across turns, compared against an uncached replay                            |
+| `batch_completion.py`            | `batch-completion.ts`                                  | `batch_completion_stream`: many prompts in one call on a `parallel`-loaded model, grouped by prompt id                    |
 | `finetune.py`                    | `finetune/llamacpp-finetune.ts`                        | `finetune_with_progress` LoRA run with per-tick progress; `finetune` with `operation` to pause and resume                 |
 | `multimodal.py`                  | `llamacpp-multimodal.ts`                               | image `attachments` on a `completion` history; `projectionModelSrc` loaded alongside the LLM                             |
 | `cancel.py`                      | `cancel-by-request-id.ts`                              | `cancel` by `request_id`, `InferenceCancelledError`                                                                       |
