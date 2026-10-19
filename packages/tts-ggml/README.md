@@ -19,9 +19,12 @@ which checkpoint to stage? Start with [Choosing a model](#choosing-a-model).
 
 ### CosyVoice3 Core ML sidecars
 
-Apple builds include optional CosyVoice3 Core ML sidecars from the native
-`speech-cpp` 2026-10-16 dependency. Export and placement details are in the
-[CosyVoice3 Core ML guide](https://github.com/tetherto/qvac-fabric-speech.cpp/blob/1cf60941455f5571b453ff5c91f743f01bac0010/engines/tts/docs/cosyvoice3.md#core-ml-sidecars).
+Apple builds support optional CosyVoice3 Core ML sidecars through the native
+`speech-cpp` 2026-10-19 dependency. Export and placement details are in the
+[CosyVoice3 Core ML guide](https://github.com/tetherto/qvac-fabric-speech.cpp/blob/ea128498e23d20cd122729275e92361b11a361df/engines/tts/docs/cosyvoice3.md#core-ml-sidecars).
+Re-export existing CosyVoice3 LM sidecars with the updated exporter to include
+the cache feedback correction for consecutive predictions.
+
 The LM, flow frontend/decoder, F0 predictor and HiFT vocoder use resident
 sidecars when present and fall back to ggml when unavailable. HiFT exports
 use FP32 for waveform parity. Core ML chooses operation placement, so a
