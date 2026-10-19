@@ -72,6 +72,7 @@ extra.
 | `transcription.py`               | `transcription/whispercpp-filesystem.ts`               | `transcribe` (`TranscribeRequest`)                                                                                        |
 | `text_to_speech.py`              | `tts/supertonic.ts`                                    | `text_to_speech` (`TextToSpeechRequest`)                                                                                  |
 | `audiogen.py`                    | `audiogen/generate-music.ts`                           | `audio_gen_stream` (`AudioGenStreamRequest`), multi-model AudioGen loading                                                |
+| `diffusion_flux2_klein.py`       | `diffusion-flux2-klein.ts`                             | `diffusion_stream` (`DiffusionStreamRequest`) — split-layout FLUX.2 [klein]; progress, images and stats off one iterator  |
 | `ocr.py`                         | `ocr-fasttext.ts`                                      | `ocr_stream` (`OcrStreamRequest`)                                                                                         |
 | `registry_query.py`              | `registry-query.ts`                                    | `model_registry_list` / `_search` / `_get_model`                                                                          |
 | `model_info.py`                  | `cache-management.ts`                                  | `get_model_info`, `download_asset_with_progress`                                                                          |
