@@ -46,7 +46,8 @@
     "coverage:cpp": "npm run coverage:cpp:build && npm run coverage:cpp:run && npm run coverage:cpp:report",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:cpp",
     "benchmarks": "./benchmarks/run-benchmarks.sh",
-    "benchmarks:windows": "powershell -ExecutionPolicy Bypass -File ./benchmarks/run-benchmarks.ps1"
+    "benchmarks:windows": "powershell -ExecutionPolicy Bypass -File ./benchmarks/run-benchmarks.ps1",
+    "benchmarks:vlm": "node benchmarks/vlm-benchmark/run-local.cjs"
   },
   "files": [
     "binding.js",
