@@ -60,6 +60,7 @@ extra.
 | `completion_deferred_tools.py`   | `tools/llamacpp-deferred-tools.ts`                     | `defer_loading` + `group` tools kept out of the prompt; worker-run `tool_search` via `completion_orchestrate`             |
 | `kv_cache.py`                    | `kv-cache-example.ts`                                  | `kv_cache` on `completion`: auto-keyed reuse across turns, compared against an uncached replay                            |
 | `finetune.py`                    | `finetune/llamacpp-finetune.ts`                        | `finetune_with_progress` LoRA run with per-tick progress; `finetune` with `operation` to pause and resume                 |
+| `multimodal.py`                  | `llamacpp-multimodal.ts`                               | image `attachments` on a `completion` history; `projectionModelSrc` loaded alongside the LLM                             |
 | `cancel.py`                      | `cancel-by-request-id.ts`                              | `cancel` by `request_id`, `InferenceCancelledError`                                                                       |
 | `embeddings.py`                  | `embed-p2p.ts`                                         | `embed` (`EmbedRequest`)                                                                                                  |
 | `rag_managed.py`                 | `rag/rag-hyperdb/ingest.ts`                            | `rag` (`RagRequest`) — `ingest`, `search`, `closeWorkspace` against the built-in vector store                             |
