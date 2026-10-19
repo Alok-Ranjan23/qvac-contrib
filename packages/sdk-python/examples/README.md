@@ -77,6 +77,8 @@ extra.
 | `diffusion_simple.py`              | `diffusion-simple.ts`                                  | `diffusion_stream` at its smallest: one all-in-one SD 2.x GGUF, prompt only, image read off the stream                    |
 | `diffusion_flux2_klein_img2img.py` | `diffusion-flux2-klein-img2img.ts`                     | img2img via `init_image` as base64; FLUX.2 in-context conditioning (`prediction: flux2_flow`)                             |
 | `diffusion_esrgan_upscale.py`      | `diffusion-esrgan-upscale.ts`                          | ESRGAN post-processing: `upscaler` in `model_config`, triggered per generation by `upscale` (x4 and x16)                  |
+| `diffusion_txt2vid.py`             | `diffusion-txt2vid.ts`                                 | `video_stream` (`VideoStreamRequest`) — split-layout Wan 2.1 T2V; progress, clips and stats off one iterator              |
+| `diffusion_img2vid.py`             | `diffusion-img2vid.ts`                                 | `video_stream` in `img2vid` mode: base64 `init_image` first frame, Wan 2.1 I2V with CLIP vision weights                   |
 | `ocr.py`                           | `ocr-fasttext.ts`                                      | `ocr_stream` (`OcrStreamRequest`)                                                                                         |
 | `registry_query.py`                | `registry-query.ts`                                    | `model_registry_list` / `_search` / `_get_model`                                                                          |
 | `model_info.py`                    | `cache-management.ts`                                  | `get_model_info`, `download_asset_with_progress`                                                                          |
