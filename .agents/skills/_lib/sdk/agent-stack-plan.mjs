@@ -274,7 +274,7 @@ function pinnedMajorMinor (entry, spec, bySlug) {
   return target
 }
 
-export function recommendVersion (entry, spec, bySlug) {
+function recommendVersion (entry, spec, bySlug) {
   const current = entry.localVersion
   if (entry.blockers.length > 0) {
     return {
@@ -339,7 +339,7 @@ export function trainsByPackage (catalog, nxJson) {
  * not move). Once any member needs a release, the members with no reason of
  * their own get the `train` reason.
  */
-export function applyTrainReleases (packages, trainOf) {
+function applyTrainReleases (packages, trainOf) {
   const active = new Set()
   for (const entry of packages) {
     const train = trainOf.get(entry.npmName)
@@ -428,6 +428,26 @@ function inspectPackage (spec, ctx) {
   return entry
 }
 
+/**
+ * Everything after the per-package inspection. `packages` holds one entry per
+ * STACK spec, in STACK order.
+ */
+export function finalizePlan (packages, trainOf) {
+  applyTrainReleases(packages, trainOf)
+
+  // Second pass: deps against finalized lower recommendations.
+  const bySlug = new Map(packages.map((entry) => [entry.slug, entry]))
+  for (let i = 0; i < STACK.length; i++) {
+    const entry = packages[i]
+    const deps = evaluateDeps(entry, STACK[i], bySlug)
+    entry.depResults = deps.depResults
+    entry.reasons = deps.reasons
+    entry.needsWork = entry.reasons.length > 0
+    entry.needsRelease = entry.needsWork && entry.blockers.length === 0
+    entry.recommendation = recommendVersion(entry, STACK[i], bySlug)
+  }
+}
+
 function buildPlan (opts) {
   const root = repoRoot()
   const ctx = {
@@ -444,22 +464,10 @@ function buildPlan (opts) {
     packages.push(entry)
   }
 
-  applyTrainReleases(
+  finalizePlan(
     packages,
     trainsByPackage(readRepoJson('.github/release-trains.json'), readRepoJson('nx.json'))
   )
-
-  // Second pass: deps against finalized lower recommendations.
-  for (let i = 0; i < STACK.length; i++) {
-    const entry = packages[i]
-    const deps = evaluateDeps(entry, STACK[i], ctx.bySlug)
-    entry.depResults = deps.depResults
-    entry.reasons = deps.reasons
-    entry.needsWork = entry.reasons.length > 0
-    entry.needsRelease = entry.needsWork && entry.blockers.length === 0
-    entry.recommendation = recommendVersion(entry, STACK[i], ctx.bySlug)
-    ctx.bySlug.set(entry.slug, entry)
-  }
 
   return {
     generatedAt: new Date().toISOString(),

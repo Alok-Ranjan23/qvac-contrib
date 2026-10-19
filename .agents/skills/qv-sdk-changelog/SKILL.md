@@ -316,8 +316,7 @@ release sets both and regenerates the Python client (`SDK_VERSION` and the other
 
 **On a release train** `nx release version` has already written the
 `@qvac/inference` range; only regenerate the Python client and the Kotlin
-contract (Steps 3 and 3b of `qv-sdk-inference-version`, including the
-`GeneratedContractTest.kt` version literal that `jvmTest` checks).
+contract (Steps 3 and 3b of `qv-sdk-inference-version`).
 
 Read and follow `.agents/skills/qv-sdk-inference-version/SKILL.md` (Steps 1–4).
 Short form:

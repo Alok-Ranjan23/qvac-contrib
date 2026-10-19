@@ -72,13 +72,10 @@ per-package workflow. The next train moves it above that version.
    rm .nx/version-plans/<ticket>.md
    ```
 
-5. Write a changelog section for each package (`qv-sdk-changelog`), and
-   regenerate the clients generated from `@qvac/sdk` at its new version:
-   - `packages/sdk-python`: `scripts/generate.py`
-   - `packages/sdk-kotlin`: set `version` and the `@qvac/sdk` pin in its
-     `package.json`, run `scripts/generate-contract.py`, and set the version
-     literal in `GeneratedContractTest.kt`. `pr-checks-sdk-kotlin.yml` checks
-     all three (`checkVersionAlignment`, `jvmTest`) on both PRs.
+5. Write a changelog section for each package (`qv-sdk-changelog`), and bring
+   `packages/sdk-python` and `packages/sdk-kotlin` to the new `@qvac/sdk`
+   version (Steps 3 and 3b of `qv-sdk-inference-version`).
+   `pr-checks-sdk-kotlin.yml` checks the Kotlin version on both PRs.
 6. Cut `release-train-sdk-<engine version>` from `upstream/main`. Open the
    release PR into it from a head not named `release-*`, and the backmerge PR
    into `main` from `backmerge/release-train-sdk-<engine version>`.
@@ -131,13 +128,16 @@ from npm. Tags, the GitHub release, PyPI and the wheels wait for it.
 
 ### Dry run
 
-The release PR runs `release-train.yml` as a dry run: the checks above, the
-build, and `pnpm publish --dry-run`, which also stops on a version below npm's
-`latest`. A `workflow_dispatch` with `dry_run: true` on the train branch does the
+Every PR into a train branch runs `release-train.yml` as a dry run: the checks
+above, the build, and `pnpm publish --dry-run`, which also stops on a version
+below npm's `latest`. The run measures the train from the merge base with
+`main`, so a fix PR after the release PR checks the whole train again. A
+`workflow_dispatch` with `dry_run: true` on the train branch does the
 same. A dry run publishes, tags and releases nothing, and needs no approval:
 `pnpm publish --dry-run` runs in its own job, with no environment and no
 `id-token`. Publishing runs only on a push or a dispatch without `dry_run`, in
-the job that holds the `npm` environment.
+the job that holds the `npm` environment. Both jobs wait for `checks-passed`,
+which requires the build and every check the train lists.
 
 ## Publishing
 

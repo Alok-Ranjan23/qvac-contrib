@@ -27,13 +27,11 @@ read `release-train-<train>-<x.y.z>` wherever this skill says
 and the title names `release-train-<train>-<x.y.z>`. `pr-checks-sdk-pod.yml`
 recognises that head name and checks the backmerge against the train's
 tarballs, because npm does not have the new versions until the train publishes.
-The source carries several manifests, changelogs, NOTICE files,
-`pnpm-lock.yaml`, the regenerated `packages/sdk-python` and `packages/sdk-kotlin`
-files and the SDK docs pages; that is release metadata for Step 2's sanity
-check. Never carry a `.nx/version-plans/` file to `main`: if the cherry-pick
-brings one, `git rm` it before committing, or the next train applies it again.
-Merge the backmerge only after the train's push run has published to npm:
-until then `main` would name versions that later PRs cannot install.
+The source carries several manifests, changelogs and `pnpm-lock.yaml`; that is
+release metadata for Step 2's sanity check. Never carry a `.nx/version-plans/`
+file to `main`: if the cherry-pick brings one, `git rm` it before committing, or
+the next train applies it again. `docs/ci/RELEASE-TRAIN.md` step 8 says when to
+merge it.
 
 ## Inputs (resolve in priority order)
 
@@ -68,7 +66,7 @@ In command examples below, `ORG_REMOTE` / `FORK_REMOTE` are placeholders — sub
 | Standalone with merged release PR     | The PR's merge/squash commit on `ORG_REMOTE/release-<pkg>-<x.y.z>` (`gh pr view <num> --json mergeCommit,headRefName`) |
 | Standalone with `--commit=<sha>`      | That single commit                                                                                               |
 
-**Sanity check:** the source range must reflect release metadata only (version bump, changelog files, NOTICE, optional model registry/history, and for `--package=sdk` the two generated reference pages under `docs/website/content/docs/sdk/`, `packages/sdk-python/src/tetherto/qvac_sdk/_generated/**`, and the `packages/sdk-kotlin` version, `@qvac/sdk` pin, `generated/` contract and `GeneratedContractTest.kt` version literal). If `git diff <range> --stat` shows broad unrelated changes (suggesting the branch was based off `main`, not the release branch), STOP and ASK how to proceed — do not silently cherry-pick unrelated work onto `main`.
+**Sanity check:** the source range must reflect release metadata only (version bump, changelog files, NOTICE, optional model registry/history, and for `--package=sdk` the two generated reference pages under `docs/website/content/docs/sdk/`, and the `packages/sdk-python` and `packages/sdk-kotlin` files `qv-sdk-inference-version` Steps 3 and 3b change). If `git diff <range> --stat` shows broad unrelated changes (suggesting the branch was based off `main`, not the release branch), STOP and ASK how to proceed — do not silently cherry-pick unrelated work onto `main`.
 
 ### Step 3: Detect no-op (main already aligned)
 

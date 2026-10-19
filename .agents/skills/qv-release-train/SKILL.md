@@ -24,22 +24,13 @@ per-package flow in `docs/gitflow.md`.
   work do not make it clear.
 - Before the version pass, set every range between train packages to the
   current workspace version, then run `pnpm install --lockfile-only`.
-- Regenerate each train package's NOTICE (`qv-sdk-changelog` Step 6) before the
-  version pass. The generator runs `npm install` in the package directory, and
-  after the version pass that install asks npm for train versions it does not
-  have yet. The generator also replaces the package's `node_modules`, so run
-  `pnpm install --frozen-lockfile` afterwards.
-- Every version plan needs a message line after the frontmatter; nx rejects a
-  plan without one.
+- Generate the NOTICE files (`qv-sdk-changelog` Step 6) before the version
+  pass; `docs/ci/RELEASE-TRAIN.md` step 2 says why.
 - Show the user the `nx release version --dry-run` output before applying it.
 - Do not run Step 2 of `/qv-sdk-inference-version`: the version pass writes the
-  `@qvac/inference` range. Regenerate `packages/sdk-python` and
-  `packages/sdk-kotlin` (Steps 3 and 3b) per `qv-sdk-changelog` Step 7.
+  `@qvac/inference` range. Its Steps 3 and 3b still apply.
 - Open both PRs with `qv-sdk-pr-create`: one release PR, one backmerge, for the
   whole train.
-- Do not merge the release PR until its `Release Train (nx)` run, the dry run
-  of `release-train.yml`, has passed.
 - Never approve the `npm` or `pypi` deployment; tell the user when each waits.
-- Merge the backmerge only after the push run has published to npm.
 - On a failed run, report it. Do not publish a package by hand and do not move
   or delete a tag.

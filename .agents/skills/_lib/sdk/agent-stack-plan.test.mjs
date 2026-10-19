@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import {
-  STACK,
-  applyTrainReleases,
-  recommendVersion,
-  trainsByPackage
-} from './agent-stack-plan.mjs'
+import { STACK, finalizePlan, trainsByPackage } from './agent-stack-plan.mjs'
 import { readRepoJson } from '../../../../.github/scripts/lib/release-train.mjs'
 
 const trainOf = trainsByPackage(
@@ -14,12 +9,14 @@ const trainOf = trainsByPackage(
   readRepoJson('nx.json')
 )
 
-function entry (spec, reasons = [], blockers = []) {
+// An entry as inspectPackage leaves it, before finalizePlan.
+function inspected (spec, reasons = [], blockers = []) {
   return {
     slug: spec.slug,
     npmName: `@qvac/${spec.slug}`,
     localVersion: '0.15.0',
     publishedVersion: '0.15.0',
+    localPkg: {},
     reasons,
     blockers,
     outstanding: [],
@@ -29,14 +26,9 @@ function entry (spec, reasons = [], blockers = []) {
   }
 }
 
-function finish (packages) {
-  const bySlug = new Map(packages.map((p) => [p.slug, p]))
-  for (const [i, p] of packages.entries()) {
-    p.needsWork = p.reasons.length > 0
-    p.needsRelease = p.needsWork && p.blockers.length === 0
-    p.recommendation = recommendVersion(p, STACK[i], bySlug)
-  }
-  return bySlug
+function plan (packages) {
+  finalizePlan(packages, trainOf)
+  return new Map(packages.map((p) => [p.slug, p]))
 }
 
 test('every agent-stack package belongs to the sdk train', () => {
@@ -44,11 +36,9 @@ test('every agent-stack package belongs to the sdk train', () => {
 })
 
 test('one changed train package gives every unchanged member a patch', () => {
-  const packages = STACK.map((spec) =>
-    entry(spec, spec.slug === 'ai-sdk-provider' ? ['code_changes'] : [])
-  )
-  applyTrainReleases(packages, trainOf)
-  const bySlug = finish(packages)
+  const bySlug = plan(STACK.map((spec) =>
+    inspected(spec, spec.slug === 'ai-sdk-provider' ? ['code_changes'] : [])
+  ))
 
   const cli = bySlug.get('cli')
   assert.equal(cli.needsRelease, true)
@@ -61,21 +51,17 @@ test('one changed train package gives every unchanged member a patch', () => {
 })
 
 test('no train release when no member needs one', () => {
-  const packages = STACK.map((spec) => entry(spec))
-  applyTrainReleases(packages, trainOf)
-  const bySlug = finish(packages)
+  const bySlug = plan(STACK.map((spec) => inspected(spec)))
   for (const p of bySlug.values()) assert.equal(p.needsRelease, false)
 })
 
 test('a blocked member stays blocked inside an active train', () => {
   const blocker = { code: 'ai_sdk_major_mismatch', message: 'hold' }
-  const packages = STACK.map((spec) => {
-    if (spec.slug === 'cli') return entry(spec, ['code_changes'])
-    if (spec.slug === 'openclaw-plugin') return entry(spec, [], [blocker])
-    return entry(spec)
-  })
-  applyTrainReleases(packages, trainOf)
-  const bySlug = finish(packages)
+  const bySlug = plan(STACK.map((spec) => {
+    if (spec.slug === 'cli') return inspected(spec, ['code_changes'])
+    if (spec.slug === 'openclaw-plugin') return inspected(spec, [], [blocker])
+    return inspected(spec)
+  }))
   assert.equal(bySlug.get('openclaw-plugin').needsRelease, false)
   assert.equal(bySlug.get('openclaw-plugin').recommendation.kind, 'blocked')
 })
