@@ -85,6 +85,7 @@ extra.
 | `diffusion_ic_lora_ltx.py`         | `diffusion-ic-lora-ltx.ts`                             | LTX-2 conditioned on a base64 reference sheet (`reference_images`) with a runtime-applied Ingredients LoRA               |
 | `diffusion_txt2vid_minimax_h3.py`  | `diffusion-txt2vid-minimax-h3.ts`                      | MiniMax-H3 `txt2vid` from four local model files, with H3\_\* env placement overrides                                   |
 | `diffusion_img2vid_minimax_h3.py`  | `diffusion-img2vid-minimax-h3.ts`                      | MiniMax-H3 `img2vid`: the same local layout minus the audio VAE, plus a base64 `init_image`                              |
+| `abot_world.py`                    | `abot-world.ts`                                        | ABot-World session: `world_scene_stream` once, then `world_step_stream` per block, with a block-granular `cancel`         |
 | `ocr.py`                           | `ocr-fasttext.ts`                                      | `ocr_stream` (`OcrStreamRequest`)                                                                                         |
 | `registry_query.py`                | `registry-query.ts`                                    | `model_registry_list` / `_search` / `_get_model`                                                                          |
 | `model_info.py`                    | `cache-management.ts`                                  | `get_model_info`, `download_asset_with_progress`                                                                          |
