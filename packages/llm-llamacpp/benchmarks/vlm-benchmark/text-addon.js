@@ -46,6 +46,12 @@ function engineConfig (plan, job) {
   if (p.cacheTypeV != null) c['cache-type-v'] = String(p.cacheTypeV)
   if (p.fit != null) c.fit = String(p.fit)
   if (gpu && p.gpuApi != null) c.backend = String(p.gpuApi)
+  // Speculative decoding (tetherto/qvac#4849): the same keys as llama-server's flags.
+  if (job.spec && job.spec !== 'none') {
+    c['spec-type'] = job.spec
+    if (W.DRAFT_MODEL_SPEC_TYPES.includes(job.spec)) c['spec-draft-model'] = plan.draft
+    if (plan.specDraftNMax != null) c['spec-draft-n-max'] = String(plan.specDraftNMax)
+  }
   return c
 }
 
@@ -74,7 +80,9 @@ async function request (model, messages, predict) {
     client_ttft_ms: first,
     client_decode_tps: W.clientDecodeTps(st.generatedTokens, first, last),
     wall_ms: Date.now() - t0,
-    stop: st.stopReason || null
+    stop: st.stopReason || null,
+    draft_n: st.draftTokens != null ? st.draftTokens : null,
+    draft_accepted: st.draftAcceptedTokens != null ? st.draftAcceptedTokens : null
   }
 }
 
@@ -93,7 +101,15 @@ async function main () {
     logger: { info () {}, debug () {}, warn () {}, error (...a) { console.error('[addon]', ...a) } },
     opts: { stats: true }
   })
-  await model.load()
+  try {
+    await model.load()
+  } catch (e) {
+    // Record the failed configuration so the report shows it instead of a gap.
+    let msg = String((e && e.message) || e).replace(/\s+/g, ' ').trim()
+    if (job.spec && job.spec !== 'none' && /spec/i.test(msg)) msg += ' (speculative decoding needs an addon build with tetherto/qvac#4849)'
+    emit('TEXTROW', { ...base, warmup: false, error: `load failed: ${msg}` })
+    throw e
+  }
   try {
     if (job.suite === 'calibrate') {
       const out = {}

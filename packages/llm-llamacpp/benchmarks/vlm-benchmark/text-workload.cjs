@@ -122,6 +122,10 @@ const TEXT_PRESETS = {
 const SUITES = ['single', 'conc', 'spec']
 // llama-server --spec-type values (qvac-fabric common/speculative.cpp).
 const SPEC_TYPES = ['ngram-simple', 'ngram-map-k', 'ngram-mod', 'ngram-cache', 'draft-simple', 'draft-mtp', 'draft-dflash', 'draft-dspark']
+// The addon's `spec-type` values (tetherto/qvac#4849); the others run on llama-server only.
+const ADDON_SPEC_TYPES = ['draft-mtp', 'draft-dflash']
+// Speculative modes that load a separate draft model (--draft).
+const DRAFT_MODEL_SPEC_TYPES = ['draft-simple', 'draft-dflash', 'draft-dspark']
 // Upper bound on a speculative prompt's rendered length, for slot sizing.
 const SPEC_PROMPT_MAX_TOKENS = 256
 
@@ -131,8 +135,7 @@ function slotCtx (promptTokens, gen) {
 }
 
 // Jobs, in run order. Each job is one model load (addon process / server start).
-// spec types other than 'none' run on llama-server only: the addon has no
-// speculative decoding.
+// Speculative modes outside ADDON_SPEC_TYPES run on llama-server only.
 function buildJobs (shape, suites, specTypes) {
   const jobs = []
   const targets = new Set()
@@ -156,7 +159,7 @@ function buildJobs (shape, suites, specTypes) {
     const s = shape.spec
     for (const spec of specTypes) {
       for (const n of s.levels) {
-        jobs.push({ id: `spec-${spec}-${n}`, suite: 'spec', spec, parallel: n, ctx: n * slotCtx(SPEC_PROMPT_MAX_TOKENS, s.gen), ignoreEos: false, gen: s.gen, prompts: s.prompts, runs: s.runs, serverOnly: spec !== 'none' })
+        jobs.push({ id: `spec-${spec}-${n}`, suite: 'spec', spec, parallel: n, ctx: n * slotCtx(SPEC_PROMPT_MAX_TOKENS, s.gen), ignoreEos: false, gen: s.gen, prompts: s.prompts, runs: s.runs, serverOnly: spec !== 'none' && !ADDON_SPEC_TYPES.includes(spec) })
       }
     }
   }
@@ -185,6 +188,8 @@ module.exports = {
   TEXT_PRESETS,
   SUITES,
   SPEC_TYPES,
+  ADDON_SPEC_TYPES,
+  DRAFT_MODEL_SPEC_TYPES,
   buildJobs,
   slotCtx,
   clientDecodeTps

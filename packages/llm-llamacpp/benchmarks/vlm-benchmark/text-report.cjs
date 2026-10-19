@@ -149,15 +149,38 @@ function summarize ({ rows, batches }) {
       gen_tokens: median(nums(rs, 'gen_tokens'))
     })
   }
-  // speedups against llama-server without speculation (same host/backend/level)
+  // speedup: against the same engine without speculation (same host/backend/level);
+  // addon rows also compare against llama-server on the same mode.
+  const find = (s, engine, spec) => out.spec.find(x => x.host === s.host && x.backend === s.backend && x.conc === s.conc && x.engine === engine && x.spec === spec)
   for (const s of out.spec) {
-    const ref = out.spec.find(x => x.host === s.host && x.backend === s.backend && x.conc === s.conc && x.engine === 'llama-server' && x.spec === 'none')
     const key = s.conc > 1 ? 'agg_tps' : 'decode_tps'
-    s.speedup_vs_server = ref && ref[key] && s[key] ? s[key] / ref[key] : null
-    const addon = out.spec.find(x => x.host === s.host && x.backend === s.backend && x.conc === s.conc && x.engine === 'addon' && x.spec === 'none')
-    s.speedup_vs_addon = addon && addon[key] && s[key] ? s[key] / addon[key] : null
+    const base = find(s, s.engine, 'none')
+    s.speedup = base && base[key] && s[key] ? s[key] / base[key] : null
+    const server = s.engine === 'addon' ? find(s, 'llama-server', s.spec) : null
+    s.addon_vs_server = server && server[key] && s[key] ? s[key] / server[key] : null
+  }
+  const specRank = s => s === 'none' ? '' : s
+  out.spec.sort((x, y) => x.host.localeCompare(y.host) || x.conc - y.conc ||
+    specRank(x.spec).localeCompare(specRank(y.spec)) ||
+    ENGINES.indexOf(x.engine) - ENGINES.indexOf(y.engine))
+
+  // configurations that failed outright (load / server start), one entry per job
+  const seen = new Set()
+  out.failed = []
+  for (const r of rows.filter(r => r.error && /^(load|start) failed/.test(r.error))) {
+    const k = `${r.host}|${r.backend}|${r.engine}|${r.job}`
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.failed.push({ host: r.host, backend: r.backend, engine: r.engine, job: r.job, error: r.error })
   }
   return out
+}
+
+const SPEC_NOTE = 'Modes both engines support (draft-mtp, draft-dflash; the addon\'s via tetherto/qvac#4849) run on both; ngram-* and draft-simple run on llama-server only. Speedup is against the same engine without speculation; "addon vs server" compares the two engines on the same mode. Acceptance = accepted ÷ drafted tokens. Generation stops at EOS (max as configured).'
+const SPEC_HEAD = kinds => ['N', 'engine · spec', ...kinds.map(k => `${k} t/s`), 'mean t/s', 'aggregate t/s', 'speedup', 'addon vs server', 'acceptance']
+function specCells (r, kinds) {
+  const x = v => v == null ? '—' : v.toFixed(2) + '×'
+  return [r.conc, `${r.engine} · ${r.spec}`, ...kinds.map(k => fmt(r.decode_tps_by_prompt[k])), fmt(r.decode_tps), fmt(r.agg_tps), x(r.speedup), x(r.addon_vs_server), r.acceptance == null ? '—' : (100 * r.acceptance).toFixed(0) + '%']
 }
 
 // ── formatting ───────────────────────────────────────────────────────────────
@@ -223,21 +246,26 @@ function markdown (sum, meta, title) {
 
   if (sum.spec.length) {
     L.push('### 3 · Speculative decoding', '')
-    L.push('The addon has no speculative decoding, so speculation runs on llama-server only. Each row\'s speedup is against llama-server without speculation and against the addon at the same level. Acceptance = accepted ÷ drafted tokens. Generation stops at EOS (max as configured).', '')
+    L.push(SPEC_NOTE, '')
     for (const host of sum.hosts) {
       for (const backend of sum.backends) {
         const rs = sum.spec.filter(r => r.host === host && r.backend === backend)
         if (!rs.length) continue
         const kinds = uniq(rs.flatMap(r => Object.keys(r.decode_tps_by_prompt)))
+        const head = SPEC_HEAD(kinds)
         L.push(`**${host} · ${backendLabel(backend, meta)}**`, '')
-        L.push(`| N | engine · spec | ${kinds.map(k => `${k} t/s`).join(' | ')} | mean t/s | aggregate t/s | vs server | vs addon | acceptance |`)
-        L.push(`|---|---|${kinds.map(() => '---').join('|')}|---|---|---|---|---|`)
-        for (const r of rs.sort((x, y) => x.conc - y.conc || ENGINES.indexOf(x.engine) - ENGINES.indexOf(y.engine) || (x.spec === 'none' ? -1 : 1))) {
-          L.push(`| ${r.conc} | ${r.engine} · ${r.spec} | ${kinds.map(k => fmt(r.decode_tps_by_prompt[k])).join(' | ')} | ${fmt(r.decode_tps)} | ${fmt(r.agg_tps)} | ${r.speedup_vs_server == null ? '—' : r.speedup_vs_server.toFixed(2) + '×'} | ${r.speedup_vs_addon == null ? '—' : r.speedup_vs_addon.toFixed(2) + '×'} | ${r.acceptance == null ? '—' : (100 * r.acceptance).toFixed(0) + '%'} |`)
-        }
+        L.push(`| ${head.join(' | ')} |`)
+        L.push(`|${head.map(() => '---').join('|')}|`)
+        for (const r of rs) L.push(`| ${specCells(r, kinds).join(' | ')} |`)
         L.push('')
       }
     }
+  }
+
+  if (sum.failed.length) {
+    L.push('### Failed configurations', '')
+    for (const f of sum.failed) L.push(`- ${f.host} · ${backendLabel(f.backend, meta)} · ${f.engine} · \`${f.job}\`: ${f.error}`)
+    L.push('')
   }
 
   L.push('### Caveats', '')
@@ -366,8 +394,7 @@ function html (sum, meta, title) {
         cards.push({
           sec: 3,
           h: bl,
-          body: chart + htmlTable(['N', 'engine · spec', ...kinds.map(k => `${k} t/s`), 'mean t/s', 'aggregate t/s', 'vs server', 'vs addon', 'acceptance'],
-            spec.sort((x, y) => x.conc - y.conc || ENGINES.indexOf(x.engine) - ENGINES.indexOf(y.engine) || (x.spec === 'none' ? -1 : 1)).map(r => [r.conc, `${r.engine} · ${r.spec}`, ...kinds.map(k => fmt(r.decode_tps_by_prompt[k])), fmt(r.decode_tps), fmt(r.agg_tps), r.speedup_vs_server == null ? '—' : r.speedup_vs_server.toFixed(2) + '×', r.speedup_vs_addon == null ? '—' : r.speedup_vs_addon.toFixed(2) + '×', r.acceptance == null ? '—' : (100 * r.acceptance).toFixed(0) + '%']))
+          body: chart + htmlTable(SPEC_HEAD(kinds), spec.map(r => specCells(r, kinds)))
         })
       }
     }
@@ -375,9 +402,13 @@ function html (sum, meta, title) {
   const SECS = {
     1: ['Single stream', 'One request at a time, fixed generation length (EOS ignored). Prefill and decode rates are each engine\'s own timings.'],
     2: ['Concurrent requests', 'N requests in flight (addon parallel = N, llama-server -np N, per-slot KV). Aggregate = generated tokens ÷ batch wall time; TTFT is client-measured and includes queueing.'],
-    3: ['Speculative decoding', 'llama-server only (the addon has no speculative decoding). Speedups are against llama-server without speculation and against the addon at the same concurrency.']
+    3: ['Speculative decoding', SPEC_NOTE]
   }
-  for (const k of [1, 2, 3]) {
+  if (sum.failed.length) {
+    cards.push({ sec: 4, h: 'Failed configurations', body: `<ul>${sum.failed.map(f => `<li>${esc(`${f.host} · ${backendLabel(f.backend, meta)} · ${f.engine} · ${f.job}: ${f.error}`)}</li>`).join('')}</ul>` })
+    SECS[4] = ['Failed configurations', 'These configurations did not run; the reason is the engine\'s own error.']
+  }
+  for (const k of [1, 2, 3, 4]) {
     const cs = cards.filter(c => c.sec === k)
     if (!cs.length) continue
     sec.push(`<section><h2>${k} · ${SECS[k][0]}</h2><p class="note">${esc(SECS[k][1])}</p>${cs.map(c => `<div class="card"><h3>${esc(c.h)}</h3>${c.body}</div>`).join('')}</section>`)

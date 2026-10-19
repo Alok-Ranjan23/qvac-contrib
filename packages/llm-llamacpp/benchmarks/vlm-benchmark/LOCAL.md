@@ -146,9 +146,15 @@ npm run benchmarks:vlm -- --llm … --mmproj … --sync-fixture
 # Text suite only, the standard matrix: p512/p2048 × n128, concurrency 1–16, speculation
 npm run benchmarks:vlm -- --llm ~/models/qwen3-8b-q4_k_m.gguf --suite text --text-preset standard
 
-# Text suite with a draft model for speculative decoding (same vocabulary as --llm)
-npm run benchmarks:vlm -- --llm ~/models/qwen3-8b-q4_k_m.gguf --suite text --text-preset standard \
-  --draft ~/models/qwen3-0.6b-q8_0.gguf --spec-types ngram-simple,draft-simple
+# Speculative decoding on both engines (addon from #4849's CI prebuild, see §6):
+# an MTP model gets draft-mtp automatically; a DFlash --draft adds draft-dflash
+npm run benchmarks:vlm -- --llm ~/models/Qwen3.8-27B-UD-Q4_K_XL.gguf --suite text --text-suites spec \
+  --draft ~/models/Qwen3.8-27B-DFlash2-Q8_0.gguf --spec-draft-n-max 7 \
+  --addon-prebuild ~/Downloads/prebuild-llm-llamacpp-darwin-arm64
+
+# Classic draft model (llama-server only; same vocabulary as --llm)
+npm run benchmarks:vlm -- --llm ~/models/qwen3-8b-q4_k_m.gguf --suite text --text-suites spec \
+  --draft ~/models/qwen3-0.6b-q8_0.gguf
 
 # Concurrency sweep only, higher levels
 npm run benchmarks:vlm -- --llm … --suite text --text-suites conc --concurrency 1,4,8,16,32
@@ -170,7 +176,7 @@ Presets (`config.cjs`) set how many images run:
 
 - **Model files:** `--llm` (required); `--mmproj` (required for the vlm suite);
   `--text-llm` (a different model for the text suite); `--draft` (draft model for
-  speculative decoding).
+  speculative decoding: a DFlash draft, or a small same-vocabulary model).
 - **Suites:** `--suite all|vlm|text` (default `all` when `--mmproj` is given, else `text`).
 - **Text suite** (§6):
   - `--text-preset quick|standard|full` (default `quick` with `--preset smoke`, else
@@ -178,8 +184,8 @@ Presets (`config.cjs`) set how many images run:
   - `--text-suites single,conc,spec` (default: all three)
   - `--text-prompts 512,2048`, `--text-gen 128`, `--text-repeats 3`
   - `--concurrency 1,2,4,8,16`
-  - `--spec-types ngram-simple,draft-simple,draft-mtp,…`, `--spec-gen 512`,
-    `--spec-concurrency 1,4,8`
+  - `--spec-types ngram-simple,draft-mtp,draft-dflash,…` (default: see §6),
+    `--spec-draft-n-max 7`, `--spec-gen 512`, `--spec-concurrency 1,4,8`
 - **Backend:**
   - `--backend cpu|gpu|cpu,gpu` (default `gpu`).
   - `--gpu-api metal|vulkan|cuda` (default `metal` on macOS, `vulkan` elsewhere).
@@ -201,8 +207,12 @@ Presets (`config.cjs`) set how many images run:
   - `--fit` (default `off`)
 - **Engine source:** `--fabric-ref <tag|sha>` builds llama-server from a different
   qvac-fabric tag or commit. Use it when §9 says so, or to test another engine version.
-- **Addon prebuild:** `--addon-version <ver|latest>` picks the npm version to install when
-  `prebuilds/` has none. There is no automatic fallback to another version.
+- **Addon prebuild:**
+  - `--addon-version <ver|latest>` picks the npm version to install when `prebuilds/` has
+    none. There is no automatic fallback to another version.
+  - `--addon-prebuild <dir>` runs against another addon build, such as a PR's CI prebuild
+    artifact (a directory holding `<platform>-<arch>/qvac__llm-llamacpp.bare`). The
+    checkout's `prebuilds/` is moved aside for the run and restored when it exits.
 - **One leg only:** `--skip-addon`, `--skip-server`.
 - **Output and port:**
   - `--out-dir` (where results go)
@@ -264,11 +274,11 @@ Three workloads on the same text model, each run on both engines and on every ba
   tokens ÷ batch wall time), per-request decode tok/s, median TTFT (client-measured, so
   queueing counts) and peak RSS.
 - **Speculative decoding** (`spec`): four prompts (code, rewrite, story, explain), up to
-  512 generated tokens, stopping at EOS. The addon has no speculative decoding, so it
-  runs its baseline only; llama-server runs its baseline plus each `--spec-types` mode.
-  Reports decode tok/s per prompt, speedup against llama-server's baseline and the
-  addon, and draft acceptance (accepted ÷ drafted tokens). With `--spec-concurrency
-  1,4,8` it also runs speculation under concurrency.
+  512 generated tokens, stopping at EOS. Both engines run their baseline and every
+  `--spec-types` mode they support (below). Reports decode tok/s per prompt, the speedup
+  against the same engine without speculation, addon vs llama-server on the same mode,
+  and draft acceptance (accepted ÷ drafted tokens). With `--spec-concurrency 1,4,8` it
+  also runs speculation under concurrency.
 
 Presets set the run size:
 
@@ -278,16 +288,34 @@ Presets set the run size:
   speculative prompts × 2.
 - `full`: p128–p4096, concurrency 1–32 × 3 rounds, speculation also at 4 and 8 concurrent.
 
-**Speculative modes.** `--spec-types` takes llama-server's `--spec-type` values:
+**Speculative modes.** `--spec-types` takes llama-server's `--spec-type` values. Which
+engine runs which:
 
-- `ngram-simple` (the default; no extra model) and the other `ngram-*` modes draft from
-  text already in the context, so they help most on copy-heavy output such as rewrites
-  and code.
-- `draft-simple` needs `--draft <gguf>`: a small model with the **same vocabulary** as
-  `--llm` (e.g. Qwen3-0.6B for Qwen3-8B). The default adds it when `--draft` is given.
-- `draft-mtp` needs a model whose GGUF contains MTP layers. On a model without them the
-  server refuses to start, and the run reports the server's reason.
-- `draft-dflash` / `draft-dspark` need a matching DFlash draft model, passed with `--draft`.
+- **Both engines:** `draft-mtp` and `draft-dflash`. The addon's speculative decoding comes
+  from [tetherto/qvac#4849](https://github.com/tetherto/qvac/pull/4849) (`spec-type`,
+  `spec-draft-model`, `spec-draft-n-max` load keys; `draftTokens` / `draftAcceptedTokens`
+  stats), which the benchmark passes the same values as llama-server's flags.
+  - `draft-mtp` uses the model's own multi-token-prediction layers. Not every GGUF keeps
+    them (unsloth's Qwen3.5 quants strip them; ggml-org's keep them).
+  - `draft-dflash` needs a DFlash block-diffusion draft model, passed with `--draft`.
+- **llama-server only:** `ngram-*` (draft from text already in the context; helps most on
+  copy-heavy output such as rewrites and code), `draft-simple` (a small `--draft` model
+  with the **same vocabulary** as `--llm`, e.g. Qwen3-0.6B for Qwen3-8B) and
+  `draft-dspark`.
+
+Without `--spec-types` the run picks: `ngram-simple`; `draft-mtp` when the GGUF has MTP
+layers (`<arch>.nextn_predict_layers > 0`); and, with `--draft`, `draft-dflash` for a
+DFlash draft (`general.architecture = dflash`) or `draft-simple` otherwise.
+`--spec-draft-n-max` pins the draft length on both engines; without it each keeps its
+default (the addon lowers it to fit a batch, with a warning).
+
+**Addon builds without #4849.** Until #4849 is released, the addon's speculative modes need
+a build from that PR. Download the PR's `prebuild-llm-llamacpp-<platform>-<arch>` artifact
+from its CI run (the PR's *Checks* tab, or `gh run download <run-id> --repo tetherto/qvac
+--name prebuild-llm-llamacpp-darwin-arm64 --dir <dir>`) and pass `--addon-prebuild <dir>`,
+or build the addon from the PR branch. With a build that lacks it, the addon's speculative
+rows fail with `invalid argument: --spec-type` and are listed under *Failed
+configurations*; everything else still runs.
 
 **Held equal**, beyond §5:
 
@@ -419,6 +447,8 @@ For results you can compare across machines:
   the server's own errors. The usual causes are a `--spec-types` mode the model cannot
   use (`draft-mtp` on a model without MTP layers, `draft-simple` with a draft of another
   vocabulary) or a context too large for memory at a high `--concurrency`.
+- **`invalid argument: --spec-type` from the addon:** the addon build has no speculative
+  decoding; see *Addon builds without #4849* in §6.
 - **`prompt calibration failed`:** the model could not be loaded for the calibration pass;
   the error above it says why. The rest of the text suite is skipped on that backend.
 - **A speculative row shows no acceptance:** the mode drafted nothing. `ngram-*` modes only
@@ -441,8 +471,9 @@ For results you can compare across machines:
   images are not supported.
 - **Only the parameters in §5 and §6 are shared.** Engine flags that `run-local.cjs` does
   not expose (tensor split and so on) stay at each engine's default.
-- **Speculative decoding is llama-server only.** The addon does not support it, so the
-  speculative section compares llama-server's speculation against both engines' baselines.
+- **Speculative decoding on the addon needs #4849.** It covers `draft-mtp` and
+  `draft-dflash`; the other modes compare llama-server's speculation against both engines'
+  baselines.
 - **Prompt rendering.** The addon accepts chat messages only, so the text suite measures
   chat-templated prompts on both engines rather than raw token sequences.
 - **Text quality is not scored.** The text suite measures speed and memory; greedy outputs

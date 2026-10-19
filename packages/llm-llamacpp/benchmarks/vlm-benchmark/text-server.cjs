@@ -24,11 +24,12 @@ function specArgs (plan, job) {
   if (!job.spec || job.spec === 'none') return []
   const gpu = plan.backend === 'gpu'
   const args = ['--spec-type', job.spec]
-  if (job.spec === 'draft-simple') {
-    if (!plan.draft) throw new Error('spec type draft-simple needs a draft model (--draft <gguf>)')
+  if (W.DRAFT_MODEL_SPEC_TYPES.includes(job.spec)) {
+    if (!plan.draft) throw new Error(`spec type ${job.spec} needs a draft model (--draft <gguf>)`)
     args.push('--model-draft', plan.draft, '--spec-draft-ngl', gpu ? '99' : '0')
     if (!gpu) args.push('--spec-draft-device', 'none')
   }
+  if (plan.specDraftNMax != null) args.push('--spec-draft-n-max', String(plan.specDraftNMax))
   return args
 }
 
@@ -199,9 +200,17 @@ async function main () {
   if (typeof a.binary !== 'string' || !fs.existsSync(a.binary)) { console.error(`[text-server] --binary missing or not found: ${a.binary || ''}`); process.exit(2) }
   if (typeof a.plan !== 'string') { console.error('[text-server] --plan <file> is required'); process.exit(2) }
   const plan = JSON.parse(fs.readFileSync(a.plan, 'utf8'))
-  const srv = await startServer(a.binary, plan, plan.job)
+  const job = plan.job
+  let srv
   try {
-    await runJob(srv, plan, plan.job)
+    srv = await startServer(a.binary, plan, job)
+  } catch (e) {
+    // Record the failed configuration so the report shows it instead of a gap.
+    emit('TEXTROW', { engine: ENGINE, backend: plan.backend, model: plan.label, source_ref: plan.sourceRef, job: job.id, suite: job.suite, conc: job.parallel, spec: job.spec || 'none', warmup: false, error: `start failed: ${e.message.replace(/\s+/g, ' ')}` })
+    throw e
+  }
+  try {
+    await runJob(srv, plan, job)
   } finally {
     srv.rss.stop()
     await srv.stop()

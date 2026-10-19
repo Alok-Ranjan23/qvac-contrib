@@ -20,7 +20,7 @@ const cp = require('child_process')
 const config = require('./config.cjs')
 const { parseArgs } = require('./utils')
 const { selectItems } = require('./items.cjs')
-const { addonDefaultImageMaxTokens } = require('./gguf.cjs')
+const { addonDefaultImageMaxTokens, architecture, hasMtpLayers } = require('./gguf.cjs')
 const W = require('./text-workload.cjs')
 const { SPEC_TYPES } = W
 
@@ -38,7 +38,8 @@ Models:
   --llm <path>            main model GGUF (required)
   --mmproj <path>         vision projector GGUF (required for the vlm suite)
   --text-llm <path>       model for the text suite (default: --llm)
-  --draft <path>          draft model for speculative decoding (same vocabulary)
+  --draft <path>          draft model for speculative decoding: a DFlash draft
+                          (draft-dflash) or a small same-vocabulary model (draft-simple)
 
 Suites:
   --suite <name>          all | vlm | text (default: all with --mmproj, else text)
@@ -62,8 +63,11 @@ Text suite (single stream, concurrency, speculative decoding):
   --text-gen <n>          generated tokens per request, single + concurrency
   --text-repeats <n>      measured repeats / rounds per configuration
   --concurrency <a,b>     concurrent request levels (e.g. 1,2,4,8,16)
-  --spec-types <a,b>      llama-server speculative modes besides none: ${SPEC_TYPES.join(', ')}
-                          (default: ngram-simple, plus draft-simple with --draft)
+  --spec-types <a,b>      speculative modes besides none: ${SPEC_TYPES.join(', ')}.
+                          ${W.ADDON_SPEC_TYPES.join(' and ')} run on both engines (addon: tetherto/qvac#4849);
+                          the rest on llama-server only. Default: ngram-simple, plus draft-mtp
+                          when the model has MTP layers, plus draft-dflash / draft-simple with --draft
+  --spec-draft-n-max <n>  max drafted tokens per step, on both engines (default: engine default)
   --spec-gen <n>          max generated tokens for speculative prompts
   --spec-concurrency <a,b>  concurrency levels for the speculative runs (default: 1)
 
@@ -86,6 +90,9 @@ Sources:
   --addon-version <ver>   npm version (or dist-tag) whose prebuild to install when
                           prebuilds/ has none for this platform (default: the
                           checkout's package.json version)
+  --addon-prebuild <dir>  use this addon build for the run (a dir holding
+                          <platform>-<arch>/qvac__llm-llamacpp.bare, e.g. a PR's CI
+                          prebuild artifact); prebuilds/ is restored afterwards
   --skip-addon | --skip-server   run one leg only
 
 Output:
@@ -177,12 +184,34 @@ function checkPrereqs (a) {
 
 function prebuildDir () { return path.join(PKG_DIR, 'prebuilds', `${os.platform()}-${os.arch()}`) }
 
+// --addon-prebuild <dir>: run against another addon build (e.g. a PR's CI
+// prebuild artifact) for this run only. The checkout's own prebuild is moved aside
+// and put back when the process exits.
+function useAddonPrebuild (dir) {
+  const plat = `${os.platform()}-${os.arch()}`
+  const src = [path.join(dir, plat), dir].find(d => fs.existsSync(path.join(d, 'qvac__llm-llamacpp.bare')))
+  if (!src) fail(`--addon-prebuild: no qvac__llm-llamacpp.bare in ${dir} or ${path.join(dir, plat)}`)
+  const dest = prebuildDir()
+  const backup = `${dest}.run-local-backup`
+  if (fs.existsSync(backup)) fail(`${backup} exists from an interrupted run; restore it to ${dest} (or delete it) first`)
+  if (fs.existsSync(dest)) fs.renameSync(dest, backup)
+  fs.mkdirSync(dest, { recursive: true })
+  fs.cpSync(src, dest, { recursive: true })
+  process.on('exit', () => {
+    fs.rmSync(dest, { recursive: true, force: true })
+    if (fs.existsSync(backup)) fs.renameSync(backup, dest)
+  })
+  for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(130))
+  return `prebuild from ${src}`
+}
+
 // Install JS deps and the addon prebuild when absent, the same way CI stages them.
 function ensureAddon (a) {
   if (!fs.existsSync(path.join(PKG_DIR, 'node_modules'))) {
     log('installing package dependencies (npm install)…')
     if (runInherit('npm', ['install', '--no-audit', '--no-fund'], { cwd: PKG_DIR }) !== 0) fail('npm install failed')
   }
+  if (a['addon-prebuild'] !== undefined) return useAddonPrebuild(path.resolve(strOpt(a, 'addon-prebuild')))
   if (fs.existsSync(prebuildDir())) return 'local prebuilds/'
   const pkgVer = readJson(path.join(PKG_DIR, 'package.json')).version
   const wanted = strOpt(a, 'addon-version', pkgVer)
@@ -347,7 +376,17 @@ function intListOpt (a, name) {
 
 // Text run shape: a preset (quick for the smoke VLM preset, else standard) plus
 // command-line overrides, expanded into the job list both engines run.
-function textPlan (a, presetName, draft) {
+// Default speculative modes: ngram-simple (no extra model), draft-mtp when the
+// model carries MTP layers, and draft-dflash / draft-simple for --draft by the draft
+// model's architecture.
+function defaultSpecTypes (textLlm, draft) {
+  const out = ['ngram-simple']
+  if (hasMtpLayers(textLlm)) out.push('draft-mtp')
+  if (draft) out.push(architecture(draft) === 'dflash' ? 'draft-dflash' : 'draft-simple')
+  return out
+}
+
+function textPlan (a, presetName, textLlm, draft) {
   const name = strOpt(a, 'text-preset', presetName === 'smoke' ? 'quick' : 'standard', Object.keys(W.TEXT_PRESETS))
   const shape = JSON.parse(JSON.stringify(W.TEXT_PRESETS[name]))
   if (a['text-prompts'] !== undefined) shape.single.prompts = intListOpt(a, 'text-prompts')
@@ -360,11 +399,14 @@ function textPlan (a, presetName, draft) {
   for (const s of suites) if (!W.SUITES.includes(s)) fail(`--text-suites must be from ${W.SUITES.join(', ')} (got '${s}')`)
   const spec = a['spec-types'] !== undefined
     ? strOpt(a, 'spec-types').split(',').map(s => s.trim()).filter(Boolean)
-    : (draft ? ['ngram-simple', 'draft-simple'] : ['ngram-simple'])
+    : defaultSpecTypes(textLlm, draft)
   for (const s of spec) if (s !== 'none' && !SPEC_TYPES.includes(s)) fail(`--spec-types must be from ${SPEC_TYPES.join(', ')} (got '${s}')`)
-  if (spec.includes('draft-simple') && !draft) fail('--spec-types draft-simple needs --draft <gguf> (a small model with the same vocabulary)')
+  for (const s of spec) {
+    if (W.DRAFT_MODEL_SPEC_TYPES.includes(s) && !draft) fail(`--spec-types ${s} needs --draft <gguf>`)
+  }
   const specTypes = ['none', ...new Set(spec.filter(s => s !== 'none'))]
-  return { presetName: name, shape, suites, specTypes, jobs: W.buildJobs(shape, suites, specTypes) }
+  const specDraftNMax = intOpt(a, 'spec-draft-n-max', null)
+  return { presetName: name, shape, suites, specTypes, specDraftNMax, jobs: W.buildJobs(shape, suites, specTypes) }
 }
 
 // Run every text job on this backend: the addon in a fresh bare process and
@@ -390,6 +432,7 @@ async function runTextJobs ({ a, backend, outDir, host, text, textLlm, textLabel
       const plan = {
         llm: textLlm,
         draft,
+        specDraftNMax: text.specDraftNMax,
         backend,
         params: textParams,
         label: textLabel,
@@ -451,7 +494,7 @@ async function main () {
   const items = runVlm ? selectItems(preset, { samples, tasks }) : []
   if (runVlm && !items.length) fail('the preset/tasks selection matched no fixture items')
 
-  const text = runText ? textPlan(a, presetName, draft) : null
+  const text = runText ? textPlan(a, presetName, textLlm, draft) : null
 
   const cacheType = strOpt(a, 'cache-type', 'f16')
   const params = {
