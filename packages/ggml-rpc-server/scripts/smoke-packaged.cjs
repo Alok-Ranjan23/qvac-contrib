@@ -22,6 +22,7 @@ const {
   resolve,
   sep,
 } = require("node:path");
+const { runWithRetry } = require("./run-with-timeout.cjs");
 
 const packageRoot = resolve(__dirname, "..");
 const manifest = JSON.parse(
@@ -111,67 +112,52 @@ function rdmaExpected() {
 const SMOKE_TIMEOUT_MS = 5 * 60 * 1000;
 const SMOKE_ATTEMPTS = 2;
 
-function run(command, args, env, shell = false) {
-  const result = spawnSync(command, args, {
-    cwd: packagedRoot,
-    env,
-    shell,
-    stdio: "inherit",
-    timeout: SMOKE_TIMEOUT_MS,
-    killSignal: "SIGKILL",
-  });
-  if (result.error?.code === "ETIMEDOUT") return false;
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(
-      `${command} ${args.join(" ")} failed (${result.status ?? result.signal})`,
+async function main() {
+  try {
+    copyIntoPackage("package.json");
+    for (const path of manifest.files) copyIntoPackage(path);
+    // The probes are CI-only; they are not included in the published package.
+    for (const path of [
+      "test/bare/prebuild-smoke.js",
+      "test/mobile/rpc-protocol.cjs",
+    ]) {
+      copyIntoPackage(path);
+    }
+
+    // Reuse JS dependencies without making the original build tree, prebuilds,
+    // or package source part of the isolated package's search path.
+    symlinkSync(
+      join(packageRoot, "node_modules"),
+      dependenciesLink,
+      process.platform === "win32" ? "junction" : "dir",
     );
-  }
-  return true;
-}
-
-try {
-  copyIntoPackage("package.json");
-  for (const path of manifest.files) copyIntoPackage(path);
-  // The probes are CI-only; they are not included in the published package.
-  for (const path of [
-    "test/bare/prebuild-smoke.js",
-    "test/mobile/rpc-protocol.cjs",
-  ]) {
-    copyIntoPackage(path);
-  }
-
-  // Reuse JS dependencies without making the original build tree, prebuilds,
-  // or package source part of the isolated package's search path.
-  symlinkSync(
-    join(packageRoot, "node_modules"),
-    dependenciesLink,
-    process.platform === "win32" ? "junction" : "dir",
-  );
-  dependenciesLinked = true;
-  if (existsSync(join(packagedRoot, "build"))) {
-    throw new Error("Isolated package unexpectedly contains a build directory");
-  }
-
-  const env = smokeEnvironment();
-  const smokeArgs = [
-    "test/bare/prebuild-smoke.js",
-    `--expect-rdma=${rdmaExpected()}`,
-  ];
-  for (let attempt = 1; ; attempt++) {
-    if (run("bare", smokeArgs, env, process.platform === "win32")) break;
-    const limit = `${SMOKE_TIMEOUT_MS / 60000} minutes`;
-    if (attempt === SMOKE_ATTEMPTS) {
+    dependenciesLinked = true;
+    if (existsSync(join(packagedRoot, "build"))) {
       throw new Error(
-        `Smoke test timed out after ${limit} in each of ${SMOKE_ATTEMPTS} attempts`,
+        "Isolated package unexpectedly contains a build directory",
       );
     }
-    console.error(
-      `::warning::Smoke test attempt ${attempt} timed out after ${limit}; retrying`,
+
+    await runWithRetry(
+      "bare",
+      ["test/bare/prebuild-smoke.js", `--expect-rdma=${rdmaExpected()}`],
+      {
+        cwd: packagedRoot,
+        env: smokeEnvironment(),
+        shell: process.platform === "win32",
+        attempts: SMOKE_ATTEMPTS,
+        timeoutMs: SMOKE_TIMEOUT_MS,
+      },
     );
+  } finally {
+    // Remove the dependency junction before recursively removing the temp tree.
+    if (dependenciesLinked) unlinkSync(dependenciesLink);
+    // Windows can hold a just-killed process's loaded addon open briefly.
+    rmSync(tempRoot, { recursive: true, force: true, maxRetries: 5 });
   }
-} finally {
-  // Remove the dependency junction before recursively removing the temp tree.
-  if (dependenciesLinked) unlinkSync(dependenciesLink);
-  rmSync(tempRoot, { recursive: true, force: true });
 }
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
