@@ -6060,6 +6060,18 @@ packages:
       bare-url:
         optional: true
 
+  bare-pack@2.2.3:
+    resolution: {integrity: sha512-wjfjKAXmhy3gjIBFVgQovyBgUqEi7zLxCwCbGTL7dSBEBe9admssLSZoUTki+0xyCBSh9dcfBT4TQwXgme9jSA==}
+    hasBin: true
+    peerDependencies:
+      bare-buffer: ^3.6.0
+      bare-url: ^2.4.0
+    peerDependenciesMeta:
+      bare-buffer:
+        optional: true
+      bare-url:
+        optional: true
+
   bare-pack@3.0.0:
     resolution: {integrity: sha512-OaARWXWwJq3FcdlQ3H2UeqwFyNXf+cAL7yGLnECnZtuwk5GftYs+zY3FreAN6bNR31ft4PZgR6lfZ3M/2A2q+Q==}
     hasBin: true
@@ -16298,6 +16310,17 @@ snapshots:
       - bare-url
       - react-native-b4a
 
+  bare-bundle-id@1.0.2(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)(bare-bundle@1.10.0(bare-buffer@3.6.2)(bare-url@2.5.4))(bare-events@2.9.1(bare-abort-controller@1.1.2))(bare-url@2.5.4):
+    dependencies:
+      bare-buffer: 3.6.2
+      bare-bundle: 1.10.0(bare-buffer@3.6.2)(bare-url@2.5.4)
+      sodium-native: 5.1.0(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)(bare-events@2.9.1(bare-abort-controller@1.1.2))(bare-url@2.5.4)
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - bare-events
+      - bare-url
+      - react-native-b4a
+
   bare-bundle-id@1.0.2(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)(bare-bundle@1.11.0(bare-buffer@3.6.2)(bare-url@2.5.4))(bare-events@2.9.1(bare-abort-controller@1.1.2))(bare-url@2.5.4):
     dependencies:
       bare-buffer: 3.6.2
@@ -16717,6 +16740,23 @@ snapshots:
     optionalDependencies:
       bare-buffer: 3.6.2
       bare-url: 2.4.6
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - bare-events
+      - react-native-b4a
+
+  bare-pack@2.2.3(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)(bare-events@2.9.1(bare-abort-controller@1.1.2))(bare-url@2.5.4):
+    dependencies:
+      bare-bundle: 1.10.0(bare-buffer@3.6.2)(bare-url@2.5.4)
+      bare-bundle-id: 1.0.2(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)(bare-bundle@1.10.0(bare-buffer@3.6.2)(bare-url@2.5.4))(bare-events@2.9.1(bare-abort-controller@1.1.2))(bare-url@2.5.4)
+      bare-fs: 4.7.4(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)
+      bare-module-traverse: 2.5.9(bare-buffer@3.6.2)(bare-url@2.5.4)
+      bare-path: 3.1.1
+      paparam: 1.10.1
+      promaphore: 1.0.0
+    optionalDependencies:
+      bare-buffer: 3.6.2
+      bare-url: 2.5.4
     transitivePeerDependencies:
       - bare-abort-controller
       - bare-events

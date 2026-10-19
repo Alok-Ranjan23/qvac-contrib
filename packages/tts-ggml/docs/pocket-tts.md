@@ -141,12 +141,12 @@ audio and broad subjective quality evaluations remain outside this coverage.
 
 ## Native dependencies and measured performance
 
-The manifests pin `speech-cpp` 2026-10-15 across the four speech addons,
-preserving their existing registry baselines. Its source is the merged
+The exact native dependency versions are declared in [vcpkg.json](../vcpkg.json).
+The Pocket GPU implementation comes from the merged
 [Fabric #338](https://github.com/tetherto/qvac-fabric-speech.cpp/pull/338)
-commit `18949569d8d08fb149c7bbcbaa9007f7d38e93ef`, registered in
+change, registered in
 [registry #433](https://github.com/tetherto/qvac-registry-vcpkg/pull/433).
-The `ggml-speech` pin remains 2026-10-07#1. Pocket resolves CPU memory planning through the
+Pocket resolves CPU memory planning through the
 backend registry, fixing the Linux/Android unresolved `ggml_graph_plan` import.
 The native fixes are merged in [ggml #92](https://github.com/tetherto/qvac-ext-ggml/pull/92)
 and [speech #251](https://github.com/tetherto/qvac-fabric-speech.cpp/pull/251).

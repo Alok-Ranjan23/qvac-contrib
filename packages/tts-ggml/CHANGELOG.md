@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Update the shared native `speech-cpp` source to `2026-10-15`, including
-  Pocket TTS Metal, CUDA and Vulkan support. The Pocket JavaScript API
+  Pocket TTS Metal, CUDA, Vulkan and OpenCL support. The Pocket JavaScript API
   continues to require CPU inference.
 - The JavaScript wrapper is split into modules under `lib/`: engine ids and
   discovery, model-file normalization, per-engine configuration (`lib/engines/`),
