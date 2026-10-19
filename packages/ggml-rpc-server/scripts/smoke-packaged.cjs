@@ -104,19 +104,30 @@ function rdmaExpected() {
   return rdmaDevicePresent() && libibverbsInstalled();
 }
 
+// Loading Fabric initialises every GPU backend, even for a CPU server. On the
+// paravirtual GPU of GitHub's Intel macOS runners the Metal shader compile
+// takes about a minute and occasionally never finishes, so a stalled attempt
+// is killed and retried rather than left to hold the job until its timeout.
+const SMOKE_TIMEOUT_MS = 5 * 60 * 1000;
+const SMOKE_ATTEMPTS = 2;
+
 function run(command, args, env, shell = false) {
   const result = spawnSync(command, args, {
     cwd: packagedRoot,
     env,
     shell,
     stdio: "inherit",
+    timeout: SMOKE_TIMEOUT_MS,
+    killSignal: "SIGKILL",
   });
+  if (result.error?.code === "ETIMEDOUT") return false;
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error(
       `${command} ${args.join(" ")} failed (${result.status ?? result.signal})`,
     );
   }
+  return true;
 }
 
 try {
@@ -143,12 +154,22 @@ try {
   }
 
   const env = smokeEnvironment();
-  run(
-    "bare",
-    ["test/bare/prebuild-smoke.js", `--expect-rdma=${rdmaExpected()}`],
-    env,
-    process.platform === "win32",
-  );
+  const smokeArgs = [
+    "test/bare/prebuild-smoke.js",
+    `--expect-rdma=${rdmaExpected()}`,
+  ];
+  for (let attempt = 1; ; attempt++) {
+    if (run("bare", smokeArgs, env, process.platform === "win32")) break;
+    const limit = `${SMOKE_TIMEOUT_MS / 60000} minutes`;
+    if (attempt === SMOKE_ATTEMPTS) {
+      throw new Error(
+        `Smoke test timed out after ${limit} in each of ${SMOKE_ATTEMPTS} attempts`,
+      );
+    }
+    console.error(
+      `::warning::Smoke test attempt ${attempt} timed out after ${limit}; retrying`,
+    );
+  }
 } finally {
   // Remove the dependency junction before recursively removing the temp tree.
   if (dependenciesLinked) unlinkSync(dependenciesLink);
