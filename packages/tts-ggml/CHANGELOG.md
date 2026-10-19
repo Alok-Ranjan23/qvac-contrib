@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Update the shared native `speech-cpp` source to `2026-10-16`, including
   optional CosyVoice3 Core ML sidecars on Apple platforms.
+- The JavaScript wrapper is split into modules under `lib/`: engine ids and
+  discovery, model-file normalization, per-engine configuration (`lib/engines/`),
+  option validation, native parameter building, per-call fields, reload and
+  sentence streaming. `index.js` keeps the public `TTSGgml` class and its
+  execution lifecycle; the public API, engine/file precedence, cancellation,
+  exclusive execution and reload behaviour are unchanged.
 
 ### Fixed
 
