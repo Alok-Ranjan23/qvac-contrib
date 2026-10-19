@@ -5,12 +5,18 @@
  *   node .agents/skills/_lib/sdk/agent-stack-plan.mjs
  *   node .agents/skills/_lib/sdk/agent-stack-plan.mjs --json
  *   node .agents/skills/_lib/sdk/agent-stack-plan.mjs --no-npm
+ *   node .agents/skills/_lib/sdk/agent-stack-plan.mjs --base-ref=<ref>
  */
 
 import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import {
+  loadTrain,
+  readRepoJson
+} from '../../../../.github/scripts/lib/release-train.mjs'
 
 const require = createRequire(import.meta.url)
 const { getPackageDir, getNpmName } = require(
@@ -18,7 +24,7 @@ const { getPackageDir, getNpmName } = require(
 )
 
 /** Lower → upper. */
-const STACK = Object.freeze([
+export const STACK = Object.freeze([
   { slug: 'inference', role: 'engine', dependsOn: null },
   {
     slug: 'sdk',
@@ -268,7 +274,7 @@ function pinnedMajorMinor (entry, spec, bySlug) {
   return target
 }
 
-function recommendVersion (entry, spec, bySlug) {
+export function recommendVersion (entry, spec, bySlug) {
   const current = entry.localVersion
   if (entry.blockers.length > 0) {
     return {
@@ -303,12 +309,53 @@ function recommendVersion (entry, spec, bySlug) {
       rationale: '0.x: [bc]/[api]/ or feat → minor'
     }
   }
+  let rationale = 'Dependency-range alignment → patch'
+  if (entry.reasons.includes('code_changes')) {
+    rationale = 'Outstanding non-breaking commits → patch'
+  } else if (entry.reasons.length === 1 && entry.reasons[0] === 'train') {
+    rationale = `Released with the ${entry.train} train`
+  }
   return {
     suggested: bumpPatch(current),
     kind: 'patch',
-    rationale: entry.reasons.includes('code_changes')
-      ? 'Outstanding non-breaking commits → patch'
-      : 'Dependency-range alignment → patch'
+    rationale
+  }
+}
+
+/** npm name → name of the release train that publishes it. */
+export function trainsByPackage (catalog, nxJson) {
+  const out = new Map()
+  for (const name of Object.keys(catalog)) {
+    for (const project of loadTrain(name, catalog, nxJson).projects) {
+      out.set(project, name)
+    }
+  }
+  return out
+}
+
+/**
+ * A train publishes every package in it (`checkRelease` in
+ * .github/scripts/lib/release-train.mjs rejects a train branch where one does
+ * not move). Once any member needs a release, the members with no reason of
+ * their own get the `train` reason.
+ */
+export function applyTrainReleases (packages, trainOf) {
+  const active = new Set()
+  for (const entry of packages) {
+    const train = trainOf.get(entry.npmName)
+    if (train && entry.needsRelease) active.add(train)
+  }
+  for (const entry of packages) {
+    const train = trainOf.get(entry.npmName)
+    if (!train) continue
+    entry.train = train
+    if (
+      active.has(train) &&
+      entry.reasons.length === 0 &&
+      entry.blockers.length === 0
+    ) {
+      entry.reasons = ['train']
+    }
   }
 }
 
@@ -397,6 +444,11 @@ function buildPlan (opts) {
     packages.push(entry)
   }
 
+  applyTrainReleases(
+    packages,
+    trainsByPackage(readRepoJson('.github/release-trains.json'), readRepoJson('nx.json'))
+  )
+
   // Second pass: deps against finalized lower recommendations.
   for (let i = 0; i < STACK.length; i++) {
     const entry = packages[i]
@@ -468,4 +520,4 @@ function main () {
   )
 }
 
-main()
+if (import.meta.url === pathToFileURL(process.argv[1]).href) main()
