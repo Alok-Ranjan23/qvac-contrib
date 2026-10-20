@@ -484,7 +484,7 @@ std::pair<BackendType, std::string> backend_selection::chooseBackend(
     }
   }
 
-  // QVAC-23763: an explicit `backend` override wins over the cascade below.
+  // An explicit `backend` override wins over the cascade below.
   //
   // Skipped entirely for a CPU load. No devices are enumerated in that case, so
   // the block could only ever reach its "matched no available device" warning,
@@ -782,7 +782,7 @@ std::vector<std::string> backend_selection::splitModeDeviceNames(
     return {};
   }
 
-  // QVAC-23763: mirror qvac-fabric's own iGPU rules, because they only apply on
+  // Mirror qvac-fabric's own iGPU rules, because they only apply on
   // the path this list bypasses. llama_prepare_model_devices() drops iGPUs once
   // any discrete GPU was found and keeps at most one otherwise, but with
   // an explicit device list it takes every named device verbatim, so emitting

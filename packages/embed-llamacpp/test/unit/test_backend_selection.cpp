@@ -1013,7 +1013,7 @@ TEST_F(BackendSelectionTest, SplitDevicesPreferDiscreteAndDedupeByDeviceId) {
   EXPECT_EQ(getSplitDeviceNames(bckI), (std::vector<std::string>{"Vulkan0"}));
 }
 
-// ---- QVAC-23763: CUDA prioritisation and the `backend` override ----
+// ---- CUDA prioritisation and the `backend` override ----
 
 // GPU backend names as ggml reports them. ggml-cuda uses "CUDA%d"; ggml-hip
 // uses "ROCm%d", which is why CUDA detection cannot pick up an AMD device.
@@ -1268,7 +1268,7 @@ TEST_F(BackendSelectionTest, TryBackendOverrideFromMapAbsentIsEmpty) {
   EXPECT_TRUE(tryBackendOverrideFromMap(config).empty());
 }
 
-// ---- QVAC-23763: split-mode device scoping ----
+// ---- split-mode device scoping ----
 //
 // Grouping is by backend REGISTRY name, not by device name, so these fixtures
 // set it explicitly. createGPUDevice() leaves it at the mock default, which
