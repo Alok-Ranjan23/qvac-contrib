@@ -305,6 +305,8 @@ test('a fit retains the backend while a loaded model unloads', { timeout: 600_00
 // qwen35 reserves an unused mixed token/embd input branch; gemma4 also scales
 // token rows through a per-row input. The figures are logged for comparison
 // across fabric versions; the assertions hold on any runner.
+// prestage-ignore: Qwen3.5-0.8B-Q8_0.gguf — desktop-only, skipped on mobile
+// prestage-ignore: google_gemma-4-E2B-it-Q4_K_M.gguf — desktop-only, skipped on mobile
 const INPUT_PATH_MODELS = ['Qwen3.5-0.8B-Q8_0.gguf', 'google_gemma-4-E2B-it-Q4_K_M.gguf']
 
 const computeBytes = (fit) => fit.devices.reduce((sum, row) => sum + row.computeBytes, 0)
