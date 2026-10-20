@@ -118,7 +118,7 @@ async function main () {
         out[target] = r
         console.error(`[text-addon] calibrated ${target} tokens -> ${r.words} words (${r.tokens} tokens)`)
       }
-      fs.writeFileSync(plan.calibrationFile, JSON.stringify({ engine: ENGINE, targets: out }, null, 2))
+      fs.writeFileSync(plan.calibrationFile, JSON.stringify({ engine: ENGINE, llm: plan.llm, targets: out }, null, 2))
       return
     }
 

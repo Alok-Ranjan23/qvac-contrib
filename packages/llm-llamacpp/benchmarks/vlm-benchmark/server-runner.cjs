@@ -20,6 +20,7 @@ const fs = require('fs')
 const path = require('path')
 const os = require('os')
 const net = require('net')
+const http = require('http')
 const cp = require('child_process')
 const crypto = require('crypto')
 const config = require('./config.cjs')
@@ -41,19 +42,25 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 // llama-server arguments matching the addon's load config (harness.cjs paramsConfig).
 // --reasoning off: the addon renders the template with thinking disabled when its
 // reasoning budget is 0; --reasoning-budget alone only limits the sampler.
+// Threadpool polling stays at each engine's default (addon 0, llama-server 50) on
+// purpose: measured on Apple M4, the addon decodes at the same speed at poll 0 and
+// 50, while llama-server at --poll 0 decodes ~20% slower on Metal (no change on CPU),
+// so forcing it to 0 would open a gap the engines do not have.
 // --verbosity 4 + --log-timestamps: the `encoding mtmd batch` line that starts the
-// vision-encode timing (visionOf) is logged at TRACE. Text runs (no mmproj) pass a
-// lower a.verbosity, since per-token TRACE logging would slow decoding.
+// vision-encode timing (visionOf) is logged at TRACE. TRACE lines are per request
+// and per batch, not per token (per-token logging is DEBUG, level 5); text runs pass
+// a.verbosity 2 only to keep their logs short.
 // a.parallel > 1 mirrors the addon's continuous batching: N slots, each with
 // ctx/N of a non-unified KV cache.
-function serverArgs (a, params, apiKey) {
+// The API key is passed in the LLAMA_API_KEY environment variable (serverEnv), not
+// on the command line, so other local users cannot read it from the process list.
+function serverArgs (a, params) {
   const gpu = a.backend === 'gpu'
   const parallel = a.parallel || 1
   const args = [
     '--model', a.llm,
     '--host', '127.0.0.1',
     '--port', String(a.port),
-    '--api-key', apiKey,
     '--ctx-size', String(params.ctxSize),
     '--parallel', String(parallel),
     '--seed', '42',
@@ -86,6 +93,21 @@ function serverArgs (a, params, apiKey) {
   return args
 }
 
+function serverEnv (apiKey) {
+  return { ...process.env, LLAMA_API_KEY: apiKey }
+}
+
+// Stop the server and close its log stream only after it has exited, so its
+// shutdown output never reaches a stream that has already ended.
+async function stopServer (child, logStream) {
+  if (child.exitCode == null && child.signalCode == null) {
+    const exited = new Promise(resolve => child.once('exit', resolve))
+    child.kill()
+    await Promise.race([exited, sleep(15000)])
+  }
+  if (logStream && !logStream.writableEnded) logStream.end()
+}
+
 function portFree (port) {
   return new Promise(resolve => {
     const srv = net.createServer()
@@ -96,8 +118,8 @@ function portFree (port) {
 }
 
 // Peak RSS (MB) of a child process. Linux reads the kernel high-water mark and
-// Windows PeakWorkingSet64; macOS has no per-pid peak, so the sampler polls the
-// current RSS. All reads are async so they never stall the timed request loop.
+// Windows PeakWorkingSet64; macOS has no per-pid peak, so it reads the current RSS.
+// All reads are async so they never stall the timed request loop.
 function rssOf (pid) {
   return new Promise(resolve => {
     if (os.platform() === 'linux') {
@@ -127,9 +149,54 @@ function startRssSampler (pid) {
     if (v != null && (peak == null || v > peak)) peak = v
     busy = false
   }
-  // Polling only adds information where the reading is the current RSS (macOS).
-  const timer = os.platform() === 'darwin' ? setInterval(sample, 100) : null
-  return { peak: async () => { await sample(); return peak }, stop: () => { if (timer) clearInterval(timer) } }
+  // Sampled only between requests (each peak() call): a background poll would fork
+  // `ps` on the server leg alone while it is being timed. On macOS this reads the
+  // RSS after each request, which plateaus once the model and buffers are loaded.
+  return { peak: async () => { await sample(); return peak }, stop: () => {} }
+}
+
+// POST a streamed chat completion and call onEvent for every SSE `data:` JSON object.
+// node:http rather than fetch: llama-server sends the response headers only with the
+// first token, and fetch gives up after 300 s without headers, so a long prefill
+// would fail on this leg only. agent: false gives every request its own connection,
+// so a pooled keep-alive socket to an earlier server on the same port is never reused.
+function postStream (url, headers, body, timeoutMs, onEvent) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(url, {
+      method: 'POST',
+      agent: false,
+      headers: { ...headers, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      res.setEncoding('utf8')
+      if (res.statusCode !== 200) {
+        let text = ''
+        res.on('data', d => { text += d })
+        res.on('end', () => reject(new Error(`HTTP ${res.statusCode}: ${text.slice(0, 500)}`)))
+        return
+      }
+      let buf = ''
+      res.on('data', d => {
+        buf += d
+        let nl
+        while ((nl = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, nl).trim()
+          buf = buf.slice(nl + 1)
+          if (!line.startsWith('data:')) continue
+          const data = line.slice(5).trim()
+          if (data === '[DONE]') continue
+          let evt
+          try { evt = JSON.parse(data) } catch (_) { continue }
+          try { onEvent(evt) } catch (e) { req.destroy(e); return }
+        }
+      })
+      res.on('end', resolve)
+      res.on('error', reject)
+    })
+    const timer = setTimeout(() => req.destroy(new Error(`request timed out after ${timeoutMs / 1000} s`)), timeoutMs)
+    req.on('error', reject)
+    req.on('close', () => clearTimeout(timer))
+    req.end(body)
+  })
 }
 
 function mimeOf (file) {
@@ -184,39 +251,19 @@ function requestBody (imgPath, prompt, maxTokens) {
 // own timings (attached to the final stream chunk).
 async function complete (base, headers, imgPath, prompt, maxTokens) {
   const { body, dims } = requestBody(imgPath, prompt, maxTokens)
-  const t0 = Date.now()
-  const res = await fetch(`${base}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 500)}`)
-  const decoder = new TextDecoder()
-  let buf = ''
   const parts = []
   let firstTokenMs = null
   let timings = null
-  for await (const chunk of res.body) {
-    buf += decoder.decode(chunk, { stream: true })
-    let nl
-    while ((nl = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, nl).trim()
-      buf = buf.slice(nl + 1)
-      if (!line.startsWith('data:')) continue
-      const data = line.slice(5).trim()
-      if (data === '[DONE]') continue
-      let evt
-      try { evt = JSON.parse(data) } catch (_) { continue }
-      if (evt.error) throw new Error(`server error: ${JSON.stringify(evt.error).slice(0, 500)}`)
-      const delta = evt.choices && evt.choices[0] && evt.choices[0].delta
-      if (delta && delta.content) {
-        if (firstTokenMs == null) firstTokenMs = Date.now() - t0
-        parts.push(delta.content)
-      }
-      if (evt.timings) timings = evt.timings
+  const t0 = Date.now()
+  await postStream(`${base}/v1/chat/completions`, headers, body, REQUEST_TIMEOUT_MS, evt => {
+    if (evt.error) throw new Error(`server error: ${JSON.stringify(evt.error).slice(0, 500)}`)
+    const delta = evt.choices && evt.choices[0] && evt.choices[0].delta
+    if (delta && delta.content) {
+      if (firstTokenMs == null) firstTokenMs = Date.now() - t0
+      parts.push(delta.content)
     }
-  }
+    if (evt.timings) timings = evt.timings
+  })
   return { text: parts.join(''), ms: Date.now() - t0, firstTokenMs, timings, dims }
 }
 
@@ -302,18 +349,22 @@ async function main () {
   // Per-run key: the server is reachable from any local process for the run's duration.
   const apiKey = crypto.randomBytes(16).toString('hex')
   const headers = { Authorization: `Bearer ${apiKey}` }
-  const args = serverArgs(a, params, apiKey)
-  console.error(`[server-runner] ${a.binary} ${args.join(' ').replace(apiKey, '<api-key>')}`)
-  const child = cp.spawn(a.binary, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(a.binary) })
-  // Server output since the current request started; trimmed per request.
+  const args = serverArgs(a, params)
+  console.error(`[server-runner] ${a.binary} ${args.join(' ')}`)
+  const child = cp.spawn(a.binary, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(a.binary), env: serverEnv(apiKey) })
+  // Server output since the current request started; reset per request.
   let logTail = ''
   const serverLog = a['server-log'] ? fs.createWriteStream(a['server-log']) : null
-  const onData = d => { const s = d.toString(); logTail += s; if (serverLog) serverLog.write(s) }
+  const onData = d => {
+    const s = d.toString()
+    logTail += s
+    if (serverLog && !serverLog.writableEnded) serverLog.write(s)
+  }
   child.stdout.on('data', onData)
   child.stderr.on('data', onData)
-  const shutdown = () => { if (child.exitCode == null) child.kill() }
-  process.on('SIGINT', () => { shutdown(); process.exit(130) })
-  process.on('SIGTERM', () => { shutdown(); process.exit(143) })
+  const kill = () => { if (child.exitCode == null) child.kill() }
+  process.on('SIGINT', () => { kill(); process.exit(130) })
+  process.on('SIGTERM', () => { kill(); process.exit(143) })
 
   const base = `http://127.0.0.1:${a.port}`
   const rss = startRssSampler(child.pid)
@@ -362,8 +413,7 @@ async function main () {
     }
   } finally {
     rss.stop()
-    shutdown()
-    if (serverLog) serverLog.end()
+    await stopServer(child, serverLog)
   }
   console.error(`[server-runner] ${SOURCE}/${a.backend}: ${ok}/${items.length * repeats} ok`)
   if (!ok && items.length) process.exitCode = 1
@@ -371,4 +421,4 @@ async function main () {
 
 if (require.main === module) main().catch(e => { console.error(`[server-runner] ${e.stack || e}`); process.exit(1) })
 
-module.exports = { serverArgs, portFree, startRssSampler, waitHealthy, sleep }
+module.exports = { serverArgs, serverEnv, stopServer, portFree, startRssSampler, waitHealthy, postStream, sleep }

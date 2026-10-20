@@ -11,6 +11,7 @@
 const fs = require('fs')
 const path = require('path')
 const { parseArgs } = require('./utils')
+const { median } = require('./methodology.cjs')
 
 const ROW_RE = /\[(TEXTROW|TEXTBATCH)\](.*?)\[\/\1\]/g
 const ENGINES = ['addon', 'llama-server']
@@ -46,12 +47,6 @@ function readJson (p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')) } ca
 // ── stats ────────────────────────────────────────────────────────────────────
 
 const nums = (rs, k) => rs.map(r => r[k]).filter(v => typeof v === 'number' && Number.isFinite(v))
-function median (xs) {
-  if (!xs.length) return null
-  const s = [...xs].sort((a, b) => a - b)
-  const mid = s.length >> 1
-  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2
-}
 const mean = xs => xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null
 const maxOf = xs => xs.length ? Math.max(...xs) : null
 const uniq = xs => [...new Set(xs)]
@@ -194,15 +189,27 @@ function delta (addon, server, lowerBetter) {
   return `${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%${Math.abs(pct) >= 3 ? (better ? ' ▲' : ' ▼') : ''}`
 }
 const backendLabel = (b, meta) => b === 'gpu' ? `GPU${meta && meta.gpu_api ? ` (${meta.gpu_api})` : ''}` : 'CPU'
+const hostMeta = (meta, host) => (meta.byHost && meta.byHost[host]) || meta
+// One line per host: the builds and parameters that host ran.
+function provenance (sum, meta) {
+  return sum.hosts.map(host => {
+    const m = hostMeta(meta, host)
+    return { host, addon: m.addon || null, server: m.server || null, params: m.params || null }
+  })
+}
 const pair = (list, f) => ENGINES.map(e => list.find(x => x.engine === e && f(x)) || null)
 
 function markdown (sum, meta, title) {
   const L = []
   L.push(`## ${title}`, '')
   L.push(`**Model:** \`${meta.label || '?'}\` · **Hosts:** ${sum.hosts.join(', ')} · **Backends:** ${sum.backends.map(b => backendLabel(b, meta)).join(', ')} · **Shape:** \`${meta.text_preset || '?'}\``, '')
-  if (meta.addon) L.push(`- addon: \`${meta.addon}\``)
-  if (meta.server) L.push(`- llama-server: ${meta.server}`)
-  if (meta.params) L.push(`- shared engine params: \`${JSON.stringify(meta.params)}\``)
+  const prov = provenance(sum, meta)
+  for (const p of prov) {
+    const at = prov.length > 1 ? ` (${p.host})` : ''
+    if (p.addon) L.push(`- addon${at}: \`${p.addon}\``)
+    if (p.server) L.push(`- llama-server${at}: ${p.server}`)
+    if (p.params) L.push(`- shared engine params${at}: \`${JSON.stringify(p.params)}\``)
+  }
   L.push('- greedy (temp 0, seed 42), thinking off, prompt cache off, unique prompt per request; each configuration is a fresh model load / server start', '')
   L.push('Δ columns are addon relative to llama-server: ▲ addon better, ▼ addon worse (|Δ| ≥ 3%).', '')
 
@@ -213,7 +220,7 @@ function markdown (sum, meta, title) {
       for (const backend of sum.backends) {
         const rs = sum.single.filter(r => r.host === host && r.backend === backend)
         if (!rs.length) continue
-        L.push(`**${host} · ${backendLabel(backend, meta)}**`, '')
+        L.push(`**${host} · ${backendLabel(backend, hostMeta(meta, host))}**`, '')
         L.push('| prompt | prompt tok (addon / server) | prefill t/s addon | prefill t/s server | Δ | decode t/s addon | decode t/s server | Δ | TTFT ms addon | TTFT ms server |')
         L.push('|---|---|---|---|---|---|---|---|---|---|')
         for (const t of uniq(rs.map(r => r.prompt_target))) {
@@ -232,7 +239,7 @@ function markdown (sum, meta, title) {
       for (const backend of sum.backends) {
         const rs = sum.conc.filter(r => r.host === host && r.backend === backend)
         if (!rs.length) continue
-        L.push(`**${host} · ${backendLabel(backend, meta)}**`, '')
+        L.push(`**${host} · ${backendLabel(backend, hostMeta(meta, host))}**`, '')
         L.push('| N | aggregate t/s addon | aggregate t/s server | Δ | per-req decode addon | per-req decode server | TTFT ms addon | TTFT ms server | peak RSS MB addon / server |')
         L.push('|---|---|---|---|---|---|---|---|---|')
         for (const n of uniq(rs.map(r => r.conc))) {
@@ -253,7 +260,7 @@ function markdown (sum, meta, title) {
         if (!rs.length) continue
         const kinds = uniq(rs.flatMap(r => Object.keys(r.decode_tps_by_prompt)))
         const head = SPEC_HEAD(kinds)
-        L.push(`**${host} · ${backendLabel(backend, meta)}**`, '')
+        L.push(`**${host} · ${backendLabel(backend, hostMeta(meta, host))}**`, '')
         L.push(`| ${head.join(' | ')} |`)
         L.push(`|${head.map(() => '---').join('|')}|`)
         for (const r of rs) L.push(`| ${specCells(r, kinds).join(' | ')} |`)
@@ -264,14 +271,14 @@ function markdown (sum, meta, title) {
 
   if (sum.failed.length) {
     L.push('### Failed configurations', '')
-    for (const f of sum.failed) L.push(`- ${f.host} · ${backendLabel(f.backend, meta)} · ${f.engine} · \`${f.job}\`: ${f.error}`)
+    for (const f of sum.failed) L.push(`- ${f.host} · ${backendLabel(f.backend, hostMeta(meta, f.host))} · ${f.engine} · \`${f.job}\`: ${f.error}`)
     L.push('')
   }
 
   L.push('### Caveats', '')
   L.push('- Prompt lengths are calibrated once against the first engine\'s tokenizer count; the "prompt tok" column shows what each engine actually processed.')
   L.push('- Under concurrency the addon\'s ctx is split evenly across slots, as is llama-server\'s with `--no-kv-unified`; both have the same per-slot context.')
-  L.push('- Peak RSS is the whole-process high-water mark: the `bare` process for the addon (includes the runtime), the server process for llama-server (polled current RSS on macOS).')
+  L.push('- Peak RSS is the whole-process high-water mark: the `bare` process for the addon (includes the runtime), the server process for llama-server (on macOS, its RSS read after each request).')
   L.push('- Greedy outputs can diverge between engines after some tokens, so generated text (and draft acceptance) is not compared on identical continuations.')
   if (sum.errors) L.push(`- **${sum.errors} request(s) failed**; see the text-*.log files.`)
   L.push('')
@@ -356,7 +363,7 @@ function html (sum, meta, title) {
   const cards = []
   for (const host of sum.hosts) {
     for (const backend of sum.backends) {
-      const bl = `${host} · ${backendLabel(backend, meta)}`
+      const bl = `${host} · ${backendLabel(backend, hostMeta(meta, host))}`
       const single = sum.single.filter(r => r.host === host && r.backend === backend)
       if (single.length) {
         const ts = uniq(single.map(r => r.prompt_target))
@@ -405,7 +412,7 @@ function html (sum, meta, title) {
     3: ['Speculative decoding', SPEC_NOTE]
   }
   if (sum.failed.length) {
-    cards.push({ sec: 4, h: 'Failed configurations', body: `<ul>${sum.failed.map(f => `<li>${esc(`${f.host} · ${backendLabel(f.backend, meta)} · ${f.engine} · ${f.job}: ${f.error}`)}</li>`).join('')}</ul>` })
+    cards.push({ sec: 4, h: 'Failed configurations', body: `<ul>${sum.failed.map(f => `<li>${esc(`${f.host} · ${backendLabel(f.backend, hostMeta(meta, f.host))} · ${f.engine} · ${f.job}: ${f.error}`)}</li>`).join('')}</ul>` })
     SECS[4] = ['Failed configurations', 'These configurations did not run; the reason is the engine\'s own error.']
   }
   for (const k of [1, 2, 3, 4]) {
@@ -413,14 +420,18 @@ function html (sum, meta, title) {
     if (!cs.length) continue
     sec.push(`<section><h2>${k} · ${SECS[k][0]}</h2><p class="note">${esc(SECS[k][1])}</p>${cs.map(c => `<div class="card"><h3>${esc(c.h)}</h3>${c.body}</div>`).join('')}</section>`)
   }
+  const prov = provenance(sum, meta)
   const facts = [
     ['Model', meta.label || '?'],
     ['Hosts', sum.hosts.join(', ')],
     ['Backends', sum.backends.map(b => backendLabel(b, meta)).join(', ')],
     ['Shape', meta.text_preset || '?'],
-    ['Addon', meta.addon || '—'],
-    ['llama-server', meta.server || '—']
+    ...prov.flatMap(p => {
+      const at = prov.length > 1 ? ` · ${p.host}` : ''
+      return [[`Addon${at}`, p.addon || '—'], [`llama-server${at}`, p.server || '—']]
+    })
   ]
+  const params = prov.filter(p => p.params).map(p => `<p class="note">Shared engine params${prov.length > 1 ? ` (${esc(p.host)})` : ''}: <code>${esc(JSON.stringify(p.params))}</code></p>`).join('\n')
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Text Engine Benchmark</title>
@@ -444,12 +455,12 @@ ul{padding-left:20px}code{font-size:12px}
 </style></head><body><main>
 <h1>${esc(title)}</h1><p class="note">Generated ${esc(new Date().toISOString().slice(0, 16).replace('T', ' '))} UTC · greedy (temp 0, seed 42), thinking off, prompt cache off, unique prompt per request, fresh load per configuration. Δ = addon relative to llama-server (▲ addon better, ▼ worse).</p>
 <div class="facts">${facts.map(([k, v]) => `<div><b>${esc(k)}</b>${esc(v)}</div>`).join('')}</div>
-${meta.params ? `<p class="note">Shared engine params: <code>${esc(JSON.stringify(meta.params))}</code></p>` : ''}
+${params}
 ${sec.join('\n')}
 <section><h2>Caveats</h2><ul>
 <li>Prompt lengths are calibrated once against the first engine's token count; tables show what each engine actually processed.</li>
 <li>Under concurrency both engines split the context evenly across slots (addon default; llama-server --no-kv-unified).</li>
-<li>Peak RSS is the whole-process high-water mark: the bare process for the addon, the server process for llama-server (polled on macOS).</li>
+<li>Peak RSS is the whole-process high-water mark: the bare process for the addon, the server process for llama-server (on macOS, its RSS read after each request).</li>
 <li>Greedy outputs can diverge between engines, so draft acceptance is not measured on identical text.</li>
 ${sum.errors ? `<li><b>${sum.errors} request(s) failed</b>; see the text-*.log files.</li>` : ''}
 </ul></section>
@@ -457,11 +468,22 @@ ${sum.errors ? `<li><b>${sum.errors} request(s) failed</b>; see the text-*.log f
 `
 }
 
+// Provenance is per host: each results dir has its own text-meta.json. `meta` keeps
+// the first dir's run-wide fields (model, shape) and adds byHost; gpu_api is kept only
+// when every host used the same one.
+function loadMeta (dirs) {
+  const metas = dirs.map(d => ({ dir: d, m: readJson(path.join(d, 'text-meta.json')) || {} }))
+  const byHost = {}
+  for (const { dir, m } of metas) byHost[m.host || path.basename(dir)] = m
+  const apis = uniq(metas.map(({ m }) => m.gpu_api || null))
+  return { ...metas[0].m, gpu_api: apis.length === 1 ? apis[0] : null, byHost }
+}
+
 function render (dirs, outDir, title) {
   const files = dirs.flatMap(textLogs)
   const parsed = parseLogs(files)
   const sum = summarize(parsed)
-  const meta = readJson(path.join(dirs[0], 'text-meta.json')) || {}
+  const meta = loadMeta(dirs)
   fs.writeFileSync(path.join(outDir, 'text-report.md'), markdown(sum, meta, title))
   fs.writeFileSync(path.join(outDir, 'text-report.html'), html(sum, meta, title))
   return sum

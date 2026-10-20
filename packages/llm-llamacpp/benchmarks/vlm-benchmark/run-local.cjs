@@ -17,6 +17,7 @@ const fs = require('fs')
 const path = require('path')
 const os = require('os')
 const cp = require('child_process')
+const crypto = require('crypto')
 const config = require('./config.cjs')
 const { parseArgs } = require('./utils')
 const { selectItems } = require('./items.cjs')
@@ -106,13 +107,19 @@ function fail (msg) { console.error(`[run-local] ERROR: ${msg}`); process.exit(1
 
 // Windows runs npm / bare / aws through their .cmd shims, which need cmd.exe;
 // quote every argument so paths with spaces or cmd metacharacters stay intact.
+// Quoting does not stop cmd.exe expanding %VAR% (or !VAR! with delayed expansion),
+// so arguments containing them are refused rather than silently rewritten.
 const SHIMS = new Set(['npm', 'bare', 'aws'])
 function winQuote (s) {
   s = String(s)
   return /^[\w\-.:\\/=@,+]+$/.test(s) ? s : `"${s.replace(/"/g, '""')}"`
 }
 function spawnSpec (cmd, args) {
-  if (IS_WIN && SHIMS.has(cmd)) return { cmd: [cmd, ...args].map(winQuote).join(' '), args: [], shell: true }
+  if (IS_WIN && SHIMS.has(cmd)) {
+    const bad = args.find(s => /[%!]/.test(String(s)))
+    if (bad !== undefined) fail(`'${bad}' contains % or !, which cmd.exe would expand when running ${cmd}; use a path without them`)
+    return { cmd: [cmd, ...args].map(winQuote).join(' '), args: [], shell: true }
+  }
   return { cmd, args, shell: false }
 }
 
@@ -153,6 +160,7 @@ function runInherit (cmd, args, opts = {}) {
 
 function intOpt (a, name, def, min = 1) {
   if (a[name] === undefined) return def
+  if (a[name] === true) fail(`--${name} needs a value`)
   const v = Number(a[name])
   if (!Number.isInteger(v) || v < min) fail(`--${name} must be an integer >= ${min} (got '${a[name]}')`)
   return v
@@ -195,17 +203,22 @@ function useAddonPrebuild (dir) {
   const backup = `${dest}.run-local-backup`
   if (fs.existsSync(backup)) fail(`${backup} exists from an interrupted run; restore it to ${dest} (or delete it) first`)
   if (fs.existsSync(dest)) fs.renameSync(dest, backup)
+  const parent = path.dirname(dest)
+  const createdParent = !fs.existsSync(parent)
   fs.mkdirSync(dest, { recursive: true })
   fs.cpSync(src, dest, { recursive: true })
   process.on('exit', () => {
     fs.rmSync(dest, { recursive: true, force: true })
     if (fs.existsSync(backup)) fs.renameSync(backup, dest)
+    else if (createdParent && fs.readdirSync(parent).length === 0) fs.rmdirSync(parent)
   })
   for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(130))
   return `prebuild from ${src}`
 }
 
-// Install JS deps and the addon prebuild when absent, the same way CI stages them.
+// Install JS deps, and when the checkout has no addon build for this platform, the
+// npm prebuild of its version for this run only (staged like --addon-prebuild and
+// removed on exit, so later tests in the checkout never load it by accident).
 function ensureAddon (a) {
   if (!fs.existsSync(path.join(PKG_DIR, 'node_modules'))) {
     log('installing package dependencies (npm install)…')
@@ -226,11 +239,12 @@ function ensureAddon (a) {
   if (!tgz || runInherit('tar', ['-xzf', tgz], { cwd: tmp }) !== 0) fail('could not unpack the addon tarball')
   const src = path.join(tmp, 'package', 'prebuilds')
   if (!fs.existsSync(path.join(src, `${os.platform()}-${os.arch()}`))) fail(`the npm package has no prebuild for ${os.platform()}-${os.arch()}; build it with: npm run build`)
-  fs.cpSync(src, path.join(PKG_DIR, 'prebuilds'), { recursive: true })
+  const sha256 = crypto.createHash('sha256').update(fs.readFileSync(path.join(tmp, tgz))).digest('hex')
+  useAddonPrebuild(src)
   const ver = (readJson(path.join(tmp, 'package', 'package.json')) || {}).version || wanted
   fs.rmSync(tmp, { recursive: true, force: true })
   if (ver !== pkgVer) log(`WARNING: addon prebuild is ${ver} but the checkout's JS is ${pkgVer}; build locally (npm run build) for an exact match`)
-  return `npm @qvac/llm-llamacpp@${ver}`
+  return `npm @qvac/llm-llamacpp@${ver}, tarball sha256 ${sha256.slice(0, 16)}…, staged for this run`
 }
 
 // bare refuses to load a module whose engines.bare floor it is below, so check the
@@ -263,7 +277,15 @@ function checkBareVersion () {
 // (packages/fabric/vcpkg.json). Warns when the installed runtime is not this
 // checkout's, since the tag would then be a guess.
 function resolveFabricRef (a) {
-  if (a['fabric-ref'] !== undefined) return { ref: strOpt(a, 'fabric-ref'), note: 'from --fabric-ref' }
+  if (a['fabric-ref'] !== undefined) {
+    // The ref reaches git as an argument: no leading '-', ref-name characters only.
+    const ref = strOpt(a, 'fabric-ref')
+    if (!/^[A-Za-z0-9._/][A-Za-z0-9._/-]*$/.test(ref)) fail(`--fabric-ref must be a tag, branch or commit SHA (got '${ref}')`)
+    // GitHub serves any commit of the fork network by SHA, so a raw SHA is not proof
+    // that the commit is in tetherto/qvac-fabric-llm.cpp.
+    const note = /^[0-9a-f]{7,40}$/i.test(ref) ? 'from --fabric-ref (raw commit SHA, origin not verified)' : 'from --fabric-ref'
+    return { ref, note }
+  }
   const vcpkg = readJson(path.join(REPO_DIR, 'packages', 'fabric', 'vcpkg.json')) || {}
   const dep = (vcpkg.dependencies || []).find(d => d && typeof d === 'object' && d.name === 'qvac-fabric')
   const raw = dep && (dep['version>='] || dep.version)
@@ -409,8 +431,17 @@ function textPlan (a, presetName, textLlm, draft) {
   return { presetName: name, shape, suites, specTypes, specDraftNMax, jobs: W.buildJobs(shape, suites, specTypes) }
 }
 
+// A calibration from an earlier run in the same --out-dir is reused only when it was
+// made on the same model and covers every prompt length this run needs.
+function calibrationUsable (file, llm, targets) {
+  const cal = readJson(file)
+  return !!(cal && cal.llm === llm && cal.targets && targets.every(t => cal.targets[t]))
+}
+
 // Run every text job on this backend: the addon in a fresh bare process and
 // llama-server freshly started, per job. Calibration runs once, on the first engine.
+// The engine that goes first alternates from job to job, so neither engine always
+// runs on the machine the other has just warmed.
 async function runTextJobs ({ a, backend, outDir, host, text, textLlm, textLabel, draft, textParams, port, addonRef, build, serverRef }) {
   const useAddon = !a['skip-addon']
   const useServer = !!build
@@ -420,13 +451,17 @@ async function runTextJobs ({ a, backend, outDir, host, text, textLlm, textLabel
   fs.mkdirSync(planDir, { recursive: true })
   const calibrationFile = path.join(outDir, 'text-calibration.json')
   let failures = 0
+  let measured = 0
   for (const job of text.jobs) {
     let engines = []
     if (useAddon && !job.serverOnly) engines.push('addon')
     if (useServer) engines.push('llama-server')
     if (job.suite === 'calibrate') {
-      if (fs.existsSync(calibrationFile)) continue
+      if (calibrationUsable(calibrationFile, textLlm, job.targets)) continue
+      fs.rmSync(calibrationFile, { force: true })
       engines = engines.slice(0, 1)
+    } else if (measured++ % 2 === 1) {
+      engines.reverse()
     }
     for (const engine of engines) {
       const plan = {

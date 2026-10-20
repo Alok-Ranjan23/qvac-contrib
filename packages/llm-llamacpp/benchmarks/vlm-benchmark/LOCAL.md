@@ -43,8 +43,10 @@ image steps (3, 5) are skipped with `--suite text`, the text step (6) with `--su
    something is missing, it names it and stops.
 2. **Prepares the addon.**
    - If `node_modules/` is missing, it runs `npm install`.
-   - If `prebuilds/` has no addon build for this platform, it installs the prebuild of this
-     checkout's version from npm.
+   - If `prebuilds/` has no addon build for this platform, it fetches the prebuild of this
+     checkout's version from npm for this run only. It is removed when the run ends, so
+     later tests in the checkout never load it by accident. The tarball's sha256 is
+     recorded with the addon version.
    - A prebuild you already have, for example from `npm run build`, is used as it is.
 3. **Runs the addon leg.** The existing harness (`vlm-matrix.test.js`) runs under `bare`
    with your model files: one warmup pass, then the measured passes.
@@ -208,9 +210,11 @@ Presets (`config.cjs`) set how many images run:
   - `--fit` (default `off`)
 - **Engine source:** `--fabric-ref <tag|sha>` builds llama-server from a different
   qvac-fabric tag or commit. Use it when §10 says so, or to test another engine version.
+  Prefer a tag: GitHub serves any commit of the repository's fork network by SHA, so the
+  report marks a raw SHA as unverified.
 - **Addon prebuild:**
-  - `--addon-version <ver|latest>` picks the npm version to install when `prebuilds/` has
-    none. There is no automatic fallback to another version.
+  - `--addon-version <ver|latest>` picks the npm version to fetch for the run when
+    `prebuilds/` has none. There is no automatic fallback to another version.
   - `--addon-prebuild <dir>` runs against another addon build, such as a PR's CI prebuild
     artifact (a directory holding `<platform>-<arch>/qvac__llm-llamacpp.bare`). The
     checkout's `prebuilds/` is moved aside for the run and restored when it exits.
@@ -258,10 +262,19 @@ following are also held equal:
 - **CPU backend:** nothing is offloaded on either engine. llama-server also gets
   `--device none`.
 - **Memory auto-fit:** off on both, so neither engine quietly shrinks ctx or layers.
+- **Thread polling:** each engine keeps its own default (the addon turns the CPU
+  threadpool's busy-waiting off; llama-server polls at 50). Measured on an Apple M4, the
+  addon decodes at the same speed with polling on or off, while llama-server with
+  `--poll 0` decodes about 20% slower on Metal (no change on CPU); forcing it off would
+  create a gap the engines do not otherwise have.
 - **Prompt cache:** disabled on the server (`cache_prompt: false`, `--cache-ram 0`, one
   slot), so every request prefills in full, as the addon does.
 - **Warmup and repeats:** one warmup request per engine, dropped from the stats. Then both
   run the same number of measured repeats.
+- **Order:** in the vlm suite the addon leg runs before the llama-server leg on every
+  backend. On a laptop that throttles, the second leg runs on a warmer machine; let it
+  cool between runs, or compare against a second run with `--skip-addon` /
+  `--skip-server`. The text suite alternates which engine goes first from job to job.
 
 ## 6 · Text suite
 
@@ -495,8 +508,9 @@ How each metric is measured:
   - For the addon, this is the `bare` process, so it includes the Bare runtime (tens of MB).
   - For llama-server, it is the kernel high-water mark on Linux (`VmHWM`) and
     `PeakWorkingSet64` on Windows.
-  - On macOS, the server's RSS is sampled every 100 ms, so its true peak can be slightly
-    higher.
+  - macOS has no per-process peak, so the server's RSS is read after each request (not
+    polled during it, which would add load to the server leg only). It plateaus once the
+    model and buffers are loaded, but a short-lived peak inside a request is not seen.
 
 ## 9 · Comparing machines
 
@@ -513,7 +527,7 @@ node benchmarks/vlm-benchmark/combine.cjs --dir <that-dir> --out <that-dir>/repo
 Each machine gets its own row, with an `addon` column and a `llama-server` column.
 
 For the text suite, point `text-report.cjs` at each machine's results directory; each host
-gets its own tables and charts:
+gets its own tables, charts and provenance (addon build, llama-server ref, parameters):
 
 ```bash
 node benchmarks/vlm-benchmark/text-report.cjs --dir <host-a-dir>,<host-b-dir> --out <out-dir>

@@ -12,7 +12,7 @@ const path = require('path')
 const cp = require('child_process')
 const crypto = require('crypto')
 const { parseArgs } = require('./utils')
-const { serverArgs, portFree, startRssSampler, waitHealthy, sleep } = require('./server-runner.cjs')
+const { serverArgs, serverEnv, stopServer, portFree, startRssSampler, waitHealthy, postStream } = require('./server-runner.cjs')
 const W = require('./text-workload.cjs')
 
 const ENGINE = 'llama-server'
@@ -38,27 +38,23 @@ async function startServer (binary, plan, job) {
   const headers = { Authorization: `Bearer ${apiKey}` }
   const params = { ...plan.params, ctxSize: job.ctx }
   delete params.imageMaxTokens
+  // Verbosity 2: the text suite reads nothing from the server log but failure reasons.
   const a = { llm: plan.llm, backend: plan.backend, port: plan.port, parallel: job.parallel, verbosity: 2 }
-  const args = [...serverArgs(a, params, apiKey), ...specArgs(plan, job)]
+  const args = [...serverArgs(a, params), ...specArgs(plan, job)]
   if (!(await portFree(plan.port))) throw new Error(`port ${plan.port} is already in use; pass --port <free port>`)
-  console.error(`[text-server] ${job.id}: ${binary} ${args.join(' ').replace(apiKey, '<api-key>')}`)
-  const child = cp.spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(binary) })
+  console.error(`[text-server] ${job.id}: ${binary} ${args.join(' ')}`)
+  const child = cp.spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: path.dirname(binary), env: serverEnv(apiKey) })
   const logStream = plan.serverLog ? fs.createWriteStream(plan.serverLog, { flags: 'a' }) : null
   if (logStream) logStream.write(`\n===== ${job.id} =====\n`)
   // Tail of the server output, so a failed start can say why (e.g. no MTP layers).
   let tail = ''
   const onData = d => {
-    if (logStream) logStream.write(d)
+    if (logStream && !logStream.writableEnded) logStream.write(d)
     tail = (tail + d.toString()).slice(-8192)
   }
   child.stdout.on('data', onData)
   child.stderr.on('data', onData)
-  const exited = new Promise(resolve => child.once('exit', resolve))
-  const stop = async () => {
-    if (child.exitCode == null) child.kill()
-    await Promise.race([exited, sleep(15000)])
-    if (logStream) logStream.end()
-  }
+  const stop = () => stopServer(child, logStream)
   process.on('SIGINT', () => { if (child.exitCode == null) child.kill(); process.exit(130) })
   process.on('SIGTERM', () => { if (child.exitCode == null) child.kill(); process.exit(143) })
   try {
@@ -74,42 +70,22 @@ async function startServer (binary, plan, job) {
 // One streamed chat completion, timed client-side from the request start.
 async function request (srv, messages, maxTokens, ignoreEos) {
   const body = JSON.stringify({ messages, max_tokens: maxTokens, temperature: 0, seed: 42, stream: true, cache_prompt: false, ignore_eos: !!ignoreEos })
-  const t0 = Date.now()
-  const res = await fetch(`${srv.base}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { ...srv.headers, 'Content-Type': 'application/json' },
-    body,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 500)}`)
-  const decoder = new TextDecoder()
-  let buf = ''
   let first = null
   let last = null
   let timings = null
   let finish = null
-  for await (const chunk of res.body) {
-    buf += decoder.decode(chunk, { stream: true })
-    let nl
-    while ((nl = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, nl).trim()
-      buf = buf.slice(nl + 1)
-      if (!line.startsWith('data:')) continue
-      const data = line.slice(5).trim()
-      if (data === '[DONE]') continue
-      let evt
-      try { evt = JSON.parse(data) } catch (_) { continue }
-      if (evt.error) throw new Error(`server error: ${JSON.stringify(evt.error).slice(0, 500)}`)
-      const choice = evt.choices && evt.choices[0]
-      if (choice && choice.delta && choice.delta.content) {
-        const now = Date.now() - t0
-        if (first == null) first = now
-        last = now
-      }
-      if (choice && choice.finish_reason) finish = choice.finish_reason
-      if (evt.timings) timings = evt.timings
+  const t0 = Date.now()
+  await postStream(`${srv.base}/v1/chat/completions`, srv.headers, body, REQUEST_TIMEOUT_MS, evt => {
+    if (evt.error) throw new Error(`server error: ${JSON.stringify(evt.error).slice(0, 500)}`)
+    const choice = evt.choices && evt.choices[0]
+    if (choice && choice.delta && choice.delta.content) {
+      const now = Date.now() - t0
+      if (first == null) first = now
+      last = now
     }
-  }
+    if (choice && choice.finish_reason) finish = choice.finish_reason
+    if (evt.timings) timings = evt.timings
+  })
   const t = timings || {}
   const gen = t.predicted_n != null ? t.predicted_n : null
   return {
@@ -141,7 +117,7 @@ async function runJob (srv, plan, job) {
       out[target] = r
       console.error(`[text-server] calibrated ${target} tokens -> ${r.words} words (${r.tokens} tokens)`)
     }
-    fs.writeFileSync(plan.calibrationFile, JSON.stringify({ engine: ENGINE, targets: out }, null, 2))
+    fs.writeFileSync(plan.calibrationFile, JSON.stringify({ engine: ENGINE, llm: plan.llm, targets: out }, null, 2))
     return
   }
 
