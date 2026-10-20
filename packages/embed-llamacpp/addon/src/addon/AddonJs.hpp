@@ -28,6 +28,7 @@
 #include "model-interface/LayaModel.hpp"
 #include "model-interface/LlamaLazyInitializeBackend.hpp"
 #include "model-interface/RerankModel.hpp"
+#include "model-interface/utils.hpp"
 
 namespace qvac_lib_inference_addon_embed {
 
@@ -182,12 +183,12 @@ inline FitResult runFit(FitRequest request) {
 
   // `BertModel::configureParams` applies both to every embedding load: a
   // non-causal model decodes one ubatch at a time, and a single sequence needs
-  // no split cache but must still admit every sequence id.
+  // no split cache but must still admit every sequence id (sized below, once
+  // the context is pinned).
   loadParams.n_ubatch = loadParams.n_batch;
-  if (loadParams.n_parallel == 1) {
+  const bool unifiedFallback = loadParams.n_parallel == 1;
+  if (unifiedFallback) {
     loadParams.kv_unified = true;
-    loadParams.n_parallel =
-        static_cast<int32_t>(llama_max_parallel_sequences());
   }
 
   // The fitter reduces the context only when it is 0, so an embedding load
@@ -211,6 +212,9 @@ inline FitResult runFit(FitRequest request) {
       }
     }
   } catch (const std::exception&) {
+  }
+  if (unifiedFallback) {
+    loadParams.n_parallel = unifiedSequenceLimit(loadParams);
   }
 
   llama_model_params mparams = common_model_params_to_llama(loadParams);

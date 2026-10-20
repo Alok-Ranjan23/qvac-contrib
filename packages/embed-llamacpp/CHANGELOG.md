@@ -33,6 +33,16 @@
   tests. The parsers compile without `@qvac/fabric`, so ASan and LeakSanitizer
   stay at full strength. No public addon API changes.
 
+### Fixed
+
+- Embedding loads with `n_parallel` 1 admit every prompt in a batch again on
+  fabric b11259, which no longer lifts the sequence limit for a unified KV
+  cache. The limit is `min(256, batch_size, ctx_size)`, so a `batch_size`
+  below 256 no longer aborts the process, and a batch of many short prompts
+  is split at the limit instead of failing to decode. The context reserves
+  one output row per sequence, so a short-query workload now holds up to
+  256 vocabulary-sized output rows.
+
 ## [0.50.0] - 2026-10-16
 
 ### Breaking
