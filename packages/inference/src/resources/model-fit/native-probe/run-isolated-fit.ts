@@ -2,9 +2,11 @@ import type { AbortSignal } from 'bare-abort-controller'
 import { fileURLToPath } from 'bare-url'
 import env from 'bare-env'
 import spawnBare from 'bare-runtime/spawn'
+import { spawn as spawnSubprocess, type SpawnOptions } from 'bare-subprocess'
 import { arch, isAndroid, isBrowser, isIOS, platform } from 'which-runtime'
 
 import type { FitProbeRequest } from '@/resources/model-fit/native-probe/engine-fit'
+import { configuredFitRunner } from '@/resources/model-fit/native-probe/fit-runner-location'
 import type {
   FitRunResult,
   FitRunUnknownReason
@@ -205,10 +207,17 @@ export function runIsolatedFit(
     })
   }
 
+  const runner = configuredFitRunner()
   const spawnProcess =
     options.spawnProcess ??
-    ((context: SpawnContext) =>
-      spawnBare(context.command, context.options) as unknown as ChildProcess)
+    (runner === null
+      ? (context: SpawnContext) =>
+          spawnBare(context.command, context.options) as unknown as ChildProcess
+      : (context: SpawnContext) =>
+          spawnSubprocess(context.command, context.options.args, {
+            stdio: context.options.stdio,
+            env: context.options.env
+          } as SpawnOptions) as unknown as ChildProcess)
   const environment = options.environment ?? env
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const terminationGraceMs = options.terminationGraceMs ?? TERMINATION_GRACE_MS
@@ -469,14 +478,15 @@ export function runIsolatedFit(
     }
 
     try {
-      const stdio: string[] =
-        runtime.platform === 'win32'
-          ? ['overlapped', 'overlapped', 'overlapped']
-          : ['pipe', 'pipe', 'pipe']
+      const channel = runtime.platform === 'win32' ? 'overlapped' : 'pipe'
+      const stdio: string[] = Array<string>(runner === null ? 3 : 4).fill(channel)
       child = spawnProcess({
-        command: 'bare',
+        command: runner?.executable ?? 'bare',
         options: {
-          args: [options.runnerPath ?? resolveFitRunnerPath(), ...(options.runnerArgs ?? [])],
+          args: [
+            options.runnerPath ?? runner?.runnerPath ?? resolveFitRunnerPath(),
+            ...(options.runnerArgs ?? [])
+          ],
           platform: runtime.platform,
           arch: runtime.arch,
           stdio,

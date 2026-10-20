@@ -26,6 +26,11 @@ export type FitProbeRequest =
 
 export type FitProbeEngine = FitProbeRequest['engine']
 
+export type FitRequestOf<E extends FitProbeEngine> = Extract<
+  FitProbeRequest,
+  { engine: E }
+>['request']
+
 export type FitProbeResult =
   | { engine: 'llm-llamacpp'; result: LlmLlamacpp.FitResult }
   | { engine: 'embed-llamacpp'; result: EmbedFitResult }

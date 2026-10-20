@@ -9,6 +9,7 @@ import {
   FIT_PROCESS_MAX_RESPONSE_BYTES,
   FIT_PROCESS_PROTOCOL_VERSION
 } from '@/resources/model-fit/native-probe/fit-process'
+import { useFitRunner } from '@/resources/model-fit/native-probe/fit-runner-location'
 import {
   runIsolatedFit,
   type ChildProcess,
@@ -542,6 +543,29 @@ test('uses overlapped child pipes on Windows', async (t) => {
   await promise
 
   t.alike(receivedOptions?.stdio, ['overlapped', 'overlapped', 'overlapped'])
+})
+
+test('starts a configured runner with its program and an open fourth pipe', async (t) => {
+  useFitRunner({ executable: '/app/bare', runnerPath: '/app/fit-runner.bundle' })
+  const child = new FakeChild()
+  let received: SpawnContext | undefined
+  try {
+    const promise = runIsolatedFit(PROBE, {
+      runtime: RUNTIME,
+      spawnProcess: (context) => {
+        received = context
+        return asChild(child)
+      }
+    })
+    closeChild(child, 1)
+    await promise
+  } finally {
+    useFitRunner(null)
+  }
+
+  t.is(received?.command, '/app/bare')
+  t.alike(received?.options.args, ['/app/fit-runner.bundle'])
+  t.alike(received?.options.stdio, ['pipe', 'pipe', 'pipe', 'pipe'])
 })
 
 test('uses the runtime-safe default environment source and preserves the 14-key allowlist', async (t) => {

@@ -870,6 +870,9 @@ importers:
       bare-stream:
         specifier: ^2.13.3
         version: 2.13.3(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)(bare-events@2.9.1(bare-abort-controller@1.1.2))
+      bare-subprocess:
+        specifier: ^6.1.0
+        version: 6.1.0(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)
       bare-url:
         specifier: ^2.4.5
         version: 2.4.6
@@ -964,9 +967,6 @@ importers:
       bare-stdio:
         specifier: ^1.0.3
         version: 1.0.3(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)
-      bare-subprocess:
-        specifier: ^6.1.0
-        version: 6.1.0(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)
       bare-timers:
         specifier: '*'
         version: 3.2.1(bare-abort-controller@1.1.2)
@@ -1726,11 +1726,14 @@ importers:
       bare-link:
         specifier: ^4.0.1
         version: 4.0.1(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)(bare-events@2.9.1(bare-abort-controller@1.1.2))
+      bare-module-traverse:
+        specifier: ~2.7.0
+        version: 2.7.2(bare-buffer@3.6.2)(bare-url@2.4.6)
       bare-os:
         specifier: ^3.6.2
         version: 3.9.3
       bare-pack:
-        specifier: ^3.0.0
+        specifier: ^3.0.2
         version: 3.0.2(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)(bare-events@2.9.1(bare-abort-controller@1.1.2))(bare-url@2.4.6)
       bare-path:
         specifier: ^3.0.1
@@ -16029,7 +16032,7 @@ snapshots:
       bare-fs: 4.7.4(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)
       bare-lief: 0.2.10(bare-abort-controller@1.1.2)(bare-buffer@3.6.2)(bare-events@2.9.1(bare-abort-controller@1.1.2))(bare-url@2.5.4)
       bare-module-resolve: 1.12.4(bare-url@2.5.4)
-      bare-module-traverse: 2.5.9(bare-buffer@3.6.2)(bare-url@2.5.4)
+      bare-module-traverse: 2.7.2(bare-buffer@3.6.2)(bare-url@2.5.4)
       bare-os: 3.9.3
       bare-path: 3.1.1
       bare-semver: 1.1.0
@@ -16109,6 +16112,17 @@ snapshots:
     optionalDependencies:
       bare-buffer: 3.6.2
       bare-url: 2.4.6
+
+  bare-module-traverse@2.7.2(bare-buffer@3.6.2)(bare-url@2.5.4):
+    dependencies:
+      bare-addon-resolve: 1.10.1(bare-url@2.5.4)
+      bare-bundle: 1.11.0(bare-buffer@3.6.2)(bare-url@2.5.4)
+      bare-mime: 1.0.0
+      bare-module-lexer: 1.7.0(bare-buffer@3.6.2)(bare-url@2.5.4)
+      bare-module-resolve: 1.12.4(bare-url@2.5.4)
+    optionalDependencies:
+      bare-buffer: 3.6.2
+      bare-url: 2.5.4
 
   bare-module@5.0.3(bare-buffer@3.6.2):
     dependencies:

@@ -14,6 +14,7 @@ import {
 } from '@/commands/bundle/node-support'
 import { SDK_CLIENT_ERROR_CODES } from '@/schemas/sdk-errors-client'
 import { generateWorkerEntry } from '@/commands/bundle/entry-gen'
+import { generateFitRunnerEntry } from '@/commands/bundle/fit-runner'
 import { resolvePluginSpecifiers } from '@/commands/bundle/plugins'
 import { listBundledAddons } from '@/commands/bundle/addons'
 import { bundleRoot, readBundle } from '@/commands/bundle/read-bundle'
@@ -86,6 +87,26 @@ function addAddon(dir: string, name: string, extra: Record<string, unknown> = {}
   )
   writeFile(path.join(dir, 'index.js'), 'module.exports = {}')
 }
+
+describe('generateFitRunnerEntry', () => {
+  it('loads only the fitter of the engine a request names', () => {
+    const source = generateFitRunnerEntry('file:///inference/serve.js', [
+      { engine: 'llm-llamacpp', url: 'file:///inference/fitters/llm-llamacpp.js' },
+      { engine: 'tts-ggml', url: 'file:///inference/fitters/tts-ggml.js' }
+    ])
+
+    assert.match(source, /import \{ serveFitRequests \} from "file:\/\/\/inference\/serve\.js"/)
+    assert.doesNotMatch(source, /import \{ assessFit/)
+    assert.match(
+      source,
+      /"llm-llamacpp": async \(request\) =>\s+\(await import\("file:\/\/\/inference\/fitters\/llm-llamacpp\.js"\)\)\.assessFit\(request\)/
+    )
+    assert.match(
+      source,
+      /"tts-ggml": async \(request\) =>\s+\(await import\("file:\/\/\/inference\/fitters\/tts-ggml\.js"\)\)\.assessFit\(request\)/
+    )
+  })
+})
 
 describe('generateWorkerEntry', () => {
   it('starts the worker with the selected built-in plugins', () => {
@@ -301,6 +322,7 @@ describe('bundleSdk', () => {
     assert.match(fs.readFileSync(result.harnessPath, 'utf8'), /bare-sidecar/)
     const { main } = await readBundle(result.bundlePath)
     assert.equal(bundleRoot(main, projectRoot), path.parse(projectRoot).root)
+    assert.ok(!fs.existsSync(path.join(workerDir, 'fit-runner.bundle')))
   })
 
   it('bundles an SDK from outside the project, with its own bare-stow', async (t) => {

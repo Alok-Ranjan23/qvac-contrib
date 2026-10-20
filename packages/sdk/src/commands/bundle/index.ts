@@ -20,12 +20,14 @@ import { generateWorkerEntry } from '@/commands/bundle/entry-gen'
 import { createSdkImportResolver, sdkImportsMap } from '@/commands/bundle/resolve-sdk-import'
 import {
   AUDIO_DECODER_ADDON,
+  buildNestedPathIndex,
   listBundledAddonModules,
   listBundledAddons
 } from '@/commands/bundle/addons'
+import { packFitRunner } from '@/commands/bundle/fit-runner'
 import { assertReactNativeBareKitSupported, linkAddons } from '@/commands/bundle/link'
 import { assertNodeCanBundle } from '@/commands/bundle/node-support'
-import { readBundle } from '@/commands/bundle/read-bundle'
+import { bundleRoot, readBundle } from '@/commands/bundle/read-bundle'
 import { TARGETS, type BundleTarget } from '@/commands/bundle/targets'
 import {
   findMissingPlatformPackages,
@@ -439,6 +441,22 @@ async function bundle(
     includeAudioDecoder
   })
   logger.info(`   Native addons (${addons.length}): ${addons.join(', ') || '(none)'}`)
+
+  if (target === 'bare-sidecar') {
+    const bundle = await readBundle(bundlePath)
+    const base = bundleRoot(bundle.main, projectRoot)
+    const runnerPath = await packFitRunner({
+      sdkPath,
+      qvacDir,
+      outputDir,
+      hosts,
+      imports,
+      defer: bundleDefer,
+      packages: buildNestedPathIndex(bundle.resolutions, base).keys(),
+      base
+    })
+    if (runnerPath) logger.info(`   Fit runner: ${path.relative(projectRoot, runnerPath)}`)
+  }
 
   if (options.verify !== false) {
     await verifyOutput({
