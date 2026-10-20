@@ -114,8 +114,7 @@ const clientErrorDefinitions: ErrorCodesMap = {
   },
   [SDK_CLIENT_ERROR_CODES.WORKER_CRASHED]: {
     name: 'WORKER_CRASHED',
-    message: (code: string, signal: string) =>
-      `Bare worker exited mid-request (code=${code}, signal=${signal}) — in-flight calls were aborted`
+    message: 'Bare worker stopped unexpectedly; in-flight calls were aborted'
   },
   [SDK_CLIENT_ERROR_CODES.WORKER_SHUTDOWN]: {
     name: 'WORKER_SHUTDOWN',
