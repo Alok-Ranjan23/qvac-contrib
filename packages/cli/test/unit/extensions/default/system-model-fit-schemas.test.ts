@@ -9,6 +9,7 @@ import {
   modelFitResult
 } from '@/serve/extensions/default/schemas/model-fit'
 import { systemQuery, systemResult } from '@/serve/extensions/default/schemas/system'
+import { mergeConfig } from '@/serve/extensions/default/routes/model-fit'
 import { errorResponses } from '@/serve/lib/error-responses'
 
 function issuePaths(input: unknown): string[] {
@@ -143,5 +144,32 @@ describe('errorResponses', () => {
       '- `invalid_models`: bad models\n- `too_many_models`: too many'
     )
     assert.equal(responses[500]!.description, '- `model_fit_failed`: sdk failed')
+  })
+})
+
+describe('mergeConfig', () => {
+  it('keeps sibling keys of a nested object the request only partly overrides', () => {
+    const merged = mergeConfig(
+      { language: 'en', contextParams: { use_gpu: true, n_ctx: 448 } },
+      { contextParams: { n_ctx: 1024 } }
+    )
+    assert.deepEqual(merged, { language: 'en', contextParams: { use_gpu: true, n_ctx: 1024 } })
+  })
+
+  it('replaces arrays, scalars and model sources whole', () => {
+    const base = {
+      stop: ['a', 'b'],
+      ctx_size: 2048,
+      projectionModelSrc: { src: 'registry://old', name: 'OLD', addon: 'llm' }
+    }
+    const next = { src: 'registry://new', name: 'NEW', addon: 'llm' }
+    const merged = mergeConfig(base, { stop: ['c'], ctx_size: 4096, projectionModelSrc: next })
+    assert.deepEqual(merged, { stop: ['c'], ctx_size: 4096, projectionModelSrc: next })
+  })
+
+  it('leaves the alias config untouched', () => {
+    const base = { contextParams: { use_gpu: true } }
+    mergeConfig(base, { contextParams: { use_gpu: false } })
+    assert.deepEqual(base, { contextParams: { use_gpu: true } })
   })
 })

@@ -26,7 +26,8 @@ own fitter runs against it, falling back to a floor computed from catalog facts.
 
 Each entry in \`models\` names a \`serve.models\` alias or an SDK model constant.
 An alias is assessed with the config it would load with; \`modelConfig\` is
-merged over it, so \`{"ctx_size": 32768}\` asks about a longer context. Model
+merged over it key by key, nested objects included, so \`{"ctx_size": 32768}\`
+asks about a longer context and leaves the rest of the alias's config as is. Model
 sources cannot be given here: companion sources in \`modelConfig\` must name
 constants, so a request never makes the server read a path or URL of its
 choosing.
@@ -104,7 +105,7 @@ function resolveCandidate(serveConfig: ServeConfig, candidate: FitCandidate): Re
     return {
       modelSrc: alias.modelSrc,
       modelType: alias.sdkType as ModelType,
-      modelConfig: { ...alias.config, ...overrides }
+      modelConfig: mergeConfig(alias.config, overrides)
     }
   }
 
@@ -123,6 +124,27 @@ function resolveCandidate(serveConfig: ServeConfig, candidate: FitCandidate): Re
     'model_not_found',
     `Model "${candidate.model}" is neither a serve.models alias nor an SDK model constant.`
   )
+}
+
+// Nested objects merge key by key, so `contextParams: { n_ctx }` keeps the
+// alias's other context params. A model source is replaced whole.
+export function mergeConfig(
+  base: Record<string, unknown>,
+  overrides: Record<string, unknown>
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(overrides)) {
+    const current = merged[key]
+    merged[key] =
+      !isModelSrcKey(key) && isPlainObject(current) && isPlainObject(value)
+        ? mergeConfig(current, value)
+        : value
+  }
+  return merged
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function assertConstantSources(config: Record<string, unknown>, path: string): void {

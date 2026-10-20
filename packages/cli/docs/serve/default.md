@@ -134,8 +134,9 @@ a floor computed from catalog facts.
 | `execution`            | `"sequential" \| "concurrent"` | No       | Co-residency assumption; `sequential` by default         |
 | `policy`               | `"interactive-v1"`             | No       | Headroom policy; withholds 20% of available memory       |
 
-An alias is assessed with the config it would load with, so `{"ctx_size": 32768}` in
-`modelConfig` asks about a longer context. Model sources cannot be given in the request:
+An alias is assessed with the config it would load with. `modelConfig` is merged over it key
+by key, nested objects included, so `{"ctx_size": 32768}` asks about a longer context and an
+override inside `contextParams` keeps the alias's other context params. Model sources cannot be given in the request:
 companion sources in `modelConfig` (`*ModelSrc` keys) must name SDK model constants, so a request
 never makes the server read a path or URL of its choosing.
 
