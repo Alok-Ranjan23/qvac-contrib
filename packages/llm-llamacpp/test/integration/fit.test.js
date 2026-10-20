@@ -196,6 +196,14 @@ test(
   }
 )
 
+test('draft-mtp on a model without MTP layers is refused', { timeout: 600_000 }, async (t) => {
+  // Qwen3 has no MTP layers, so the load cannot create the MTP context.
+  const fit = await assess(await modelPath(), { 'spec-type': 'draft-mtp' })
+
+  t.is(fit.status, 'error')
+  t.is(fit.reason, 'unsupported-config', 'the load fails the same way')
+})
+
 test('an invalid speculative config is refused', { timeout: 600_000 }, async (t) => {
   const fit = await assess(await modelPath(), {
     'spec-type': 'draft-mtp',

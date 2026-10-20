@@ -7,6 +7,9 @@
 - `assessFit` with `spec-type: 'draft-mtp'` now counts the MTP draft context
   in its per-device figures (`devices`, `deviceBytes`, `hostBytes`), not only
   in its verdict, so the headroom they show matches what the load uses.
+- `assessFit` refuses `spec-type: 'draft-mtp'` on a model without MTP layers
+  with `unsupported-config`, as the load fails, instead of projecting the
+  load without the MTP context.
 - `assessFit` reports `model-unreadable` for a `spec-draft-model` that is not
   a regular file, such as a directory, as the load rejects it, instead of
   projecting the load without it.

@@ -809,9 +809,13 @@ inline FitResult runFit(FitRequest request) {
     breakdown.clear();
   }
   // The verdict counted the draft context next to the target; so do the
-  // per-device figures. A draft side fabric cannot measure stays out of both.
-  if (measured && speculativeFit) {
-    speculativeFit->addMemory(cparams.n_ctx, devices, breakdown);
+  // per-device figures. A DFlash model fabric cannot measure stays out of
+  // both. An MTP context it cannot create, on a model without MTP layers,
+  // fails the load, so the projection is refused like any such load.
+  if (measured && speculativeFit &&
+      !speculativeFit->addMemory(cparams.n_ctx, devices, breakdown) &&
+      speculativeFit->extra()->shares_model) {
+    return errorResult("unsupported-config");
   }
 
   // The probe returns one row per device the model was assigned to, then a
