@@ -100,23 +100,31 @@ describe('fetchRemoteImage', () => {
   let server: http.Server
   let port: number
   const hits: string[] = []
+  const redirects = new Map<string, string>()
+
+  // Redirect targets are registered by the test, never read from the request.
+  function redirectPath(location: string): string {
+    const path = `/redirect/${redirects.size}`
+    redirects.set(path, location)
+    return path
+  }
 
   before(async () => {
     server = http.createServer((req, res) => {
       hits.push(req.url ?? '')
-      const [path, query] = (req.url ?? '').split('?')
-      const to = new URLSearchParams(query).get('to')
+      const path = req.url ?? ''
+      const location = redirects.get(path)
       if (path === '/image') {
         res.writeHead(200, { 'content-type': 'image/png' }).end(Buffer.from([1, 2, 3]))
-      } else if (path === '/redirect' && to) {
-        res.writeHead(302, { location: to }).end()
+      } else if (location) {
+        res.writeHead(302, { location }).end()
       } else if (path === '/big') {
         res.writeHead(200).end(Buffer.alloc(4096))
       } else if (path === '/slow') {
         res.writeHead(200)
         res.write(Buffer.from([1]))
       } else {
-        res.writeHead(Number(path!.slice(1)) || 500).end()
+        res.writeHead(Number(path.slice(1)) || 500).end()
       }
     })
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -136,8 +144,8 @@ describe('fetchRemoteImage', () => {
 
   it('follows a redirect to another allowed host', async () => {
     const opts = testOptions({ 'public.test': PUBLIC_FOR_TEST, 'cdn.test': PUBLIC_FOR_TEST })
-    const target = encodeURIComponent(`http://cdn.test:${port}/image`)
-    const bytes = await fetchRemoteImage(`http://public.test:${port}/redirect?to=${target}`, opts)
+    const path = redirectPath(`http://cdn.test:${port}/image`)
+    const bytes = await fetchRemoteImage(`http://public.test:${port}${path}`, opts)
     assert.deepEqual(bytes, new Uint8Array([1, 2, 3]))
     assert.deepEqual(opts.resolved, ['public.test', 'cdn.test'])
   })
@@ -192,15 +200,15 @@ describe('fetchRemoteImage', () => {
       'file:///etc/passwd'
     ]) {
       await assertFetchError(
-        fetchRemoteImage(`http://public.test:${port}/redirect?to=${encodeURIComponent(to)}`, opts)
+        fetchRemoteImage(`http://public.test:${port}${redirectPath(to)}`, opts)
       )
     }
   })
 
   it('stops after too many redirects', async () => {
     const opts = testOptions({ 'public.test': PUBLIC_FOR_TEST }, { maxRedirects: 1 })
-    const inner = `http://public.test:${port}/redirect?to=${encodeURIComponent(`http://public.test:${port}/image`)}`
-    const outer = `http://public.test:${port}/redirect?to=${encodeURIComponent(inner)}`
+    const inner = `http://public.test:${port}${redirectPath(`http://public.test:${port}/image`)}`
+    const outer = `http://public.test:${port}${redirectPath(inner)}`
     await assertFetchError(fetchRemoteImage(outer, opts))
   })
 
