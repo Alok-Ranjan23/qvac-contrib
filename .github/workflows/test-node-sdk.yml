@@ -307,8 +307,10 @@ jobs:
       # The Python leg resolves the same resource table against the same
       # registry, so it bootstraps and caches as `desktop` rather than paying
       # for a second copy of every model.
+      # TEMP DIAGNOSTIC (tmp-cuda-crash-debug): with cache-models off, skip the
+      # unfiltered bootstrap; the consumer downloads only the filtered tests' models.
       - name: Bootstrap (download models)
-        if: steps.models-cache.outputs.cache-hit != 'true'
+        if: inputs.cache-models != false && steps.models-cache.outputs.cache-hit != 'true'
         working-directory: ${{ inputs.working-directory }}
         run: npx qvac-test run:bootstrap:${{ inputs.consumer == 'python' && 'desktop' || inputs.consumer }} --config=.
 

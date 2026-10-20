@@ -86,11 +86,21 @@ function readJsonConfig(configPath: string) {
 // Exercises registryDownloadMaxRetries + registryStreamTimeoutMs end-to-end (see config-tests.ts).
 // TEMP DIAGNOSTIC (tmp-qvac-26970-win-diag): extra env for the worker, and a GPU
 // memory sampler so the log shows whether device memory fills before a crash.
-const DIAG_WORKER_ENV: Record<string, string> = {}
+// tmp-cuda-crash-debug: does eager module loading avoid the OOM on the first CUDA graph capture?
+const DIAG_WORKER_ENV: Record<string, string> = { CUDA_MODULE_LOADING: 'EAGER' }
 function startDiagnostics() {
   for (const [key, value] of Object.entries(DIAG_WORKER_ENV)) process.env[key] = value
   console.log(`[diag] worker env ${JSON.stringify(DIAG_WORKER_ENV)}`)
   if (process.platform !== 'win32') return
+  try {
+    const info = diagSpawn('nvidia-smi', ['--query-gpu=name,driver_version', '--format=csv,noheader'], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    info.stdout?.on('data', (chunk: Buffer) => console.log(`[gpu-info] ${chunk.toString().trim()}`))
+    info.on('error', (error) => console.log(`[gpu-info] error ${error.message}`))
+  } catch (error) {
+    console.log(`[gpu-info] failed ${String(error)}`)
+  }
   try {
     const sampler = diagSpawn(
       'nvidia-smi',
