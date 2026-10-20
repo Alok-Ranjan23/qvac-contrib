@@ -13,6 +13,18 @@ import {
 
 const checker = fileURLToPath(new URL('./verify-prebuild-linking.mjs', import.meta.url))
 
+test('Linux release configuration requests CUDA kernels as well as the toolkit', () => {
+  const manifest = JSON.parse(fs.readFileSync(new URL('../vcpkg.json', import.meta.url), 'utf8'))
+  const project = JSON.parse(fs.readFileSync(new URL('../project.json', import.meta.url), 'utf8'))
+  const dependency = manifest.dependencies.find((entry) => entry.name === 'stable-diffusion-cpp')
+  assert.ok(
+    dependency.features?.some((feature) => feature.name === 'cuda' && feature.platform === 'linux'),
+    'Linux must request stable-diffusion-cpp[cuda]; installing the toolkit alone does not build CUDA kernels'
+  )
+  assert.equal(project.targets.build.options.ci.includeCuda, true)
+  assert.equal(project.targets.build.options.ci.includeCudaArm64, true)
+})
+
 // Minimal ELF fixture with a dynamic string table and DT_NEEDED records.
 // Only dependency names vary between the packaging failure cases.
 function elf(dependencies) {
