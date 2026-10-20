@@ -394,6 +394,90 @@ TEST_F(BackendSelectionTest, MainGpuIndexTargetingRocmFallsBackToCpu) {
       mockBackend, BackendType::GPU, BackendType::CPU, "none", mainGpu);
 }
 
+TEST_F(BackendSelectionTest, MainGpuIndexSelectsHtpWithActualDeviceName) {
+  for (const std::string name : {"HTP0", "HTP0:0"}) {
+    SCOPED_TRACE(name);
+    mockBackend.clearDevices();
+    mockBackend.addDevice(createCPUDevice("host", "CPU"));
+    mockBackend.addDevice(MockDevice(
+        "Hexagon", std::string(name), GGML_BACKEND_DEVICE_TYPE_GPU, "HTP"));
+    BackendInterface bckI = mockBackend.toBackendInterface();
+    const auto result = chooseBackend(BackendType::GPU, bckI, MainGpu(1));
+    std::string expectedName = name;
+    std::transform(
+        expectedName.begin(),
+        expectedName.end(),
+        expectedName.begin(),
+        ::tolower);
+    EXPECT_EQ(result.first, BackendType::GPU);
+    EXPECT_EQ(result.second, expectedName);
+  }
+}
+
+TEST_F(BackendSelectionTest, HtpBeforeAdrenoDoesNotChangeAutomaticSelection) {
+  mockBackend.addDevice(
+      MockDevice("Hexagon", "HTP0", GGML_BACKEND_DEVICE_TYPE_GPU, "HTP"));
+  mockBackend.addDevice(createGPUDevice(ADRENO_DESC, OPENCL_BACK));
+  expectChosen(mockBackend, BackendType::GPU, "gpuopencl");
+}
+
+TEST_F(BackendSelectionTest, HtpOnlyAutomaticSelectionFallsBackToCpu) {
+  mockBackend.addDevice(
+      MockDevice("Hexagon", "HTP0", GGML_BACKEND_DEVICE_TYPE_GPU, "HTP"));
+  expectChosenForPreference(
+      mockBackend, BackendType::GPU, BackendType::CPU, "none");
+}
+
+TEST_F(BackendSelectionTest, MainGpuTypeDoesNotImplicitlySelectHtp) {
+  mockBackend.addDevice(
+      MockDevice("Hexagon", "HTP0", GGML_BACKEND_DEVICE_TYPE_GPU, "HTP"));
+  for (MainGpuType type : {MainGpuType::Dedicated, MainGpuType::Integrated}) {
+    expectChosenForPreference(
+        mockBackend, BackendType::GPU, BackendType::CPU, "none", MainGpu(type));
+  }
+}
+
+TEST_F(BackendSelectionTest, PreferredCpuIgnoresHtpMainGpuIndex) {
+  mockBackend.addDevice(
+      MockDevice("Hexagon", "HTP0", GGML_BACKEND_DEVICE_TYPE_GPU, "HTP"));
+  expectChosenForPreference(
+      mockBackend, BackendType::CPU, BackendType::CPU, "none", MainGpu(0));
+}
+
+TEST_F(BackendSelectionTest, HtpMainGpuIndexRequiresExactRegistry) {
+  for (const std::string registry : {"NotHTP", "standard"}) {
+    SCOPED_TRACE(registry);
+    mockBackend.clearDevices();
+    mockBackend.addDevice(MockDevice(
+        "Hexagon HTP",
+        "HTP0",
+        GGML_BACKEND_DEVICE_TYPE_GPU,
+        std::string(registry)));
+    expectChosenForPreference(
+        mockBackend, BackendType::GPU, BackendType::CPU, "none", MainGpu(0));
+  }
+}
+
+TEST_F(BackendSelectionTest, HtpMainGpuIndexRequiresGpuDeviceType) {
+  for (enum ggml_backend_dev_type type :
+       {GGML_BACKEND_DEVICE_TYPE_ACCEL, GGML_BACKEND_DEVICE_TYPE_IGPU}) {
+    mockBackend.clearDevices();
+    mockBackend.addDevice(MockDevice("Hexagon", "HTP0", type, "HTP"));
+    expectChosenForPreference(
+        mockBackend, BackendType::GPU, BackendType::CPU, "none", MainGpu(0));
+  }
+}
+
+TEST_F(BackendSelectionTest, HtpMainGpuIndexDoesNotBypassBackendOverride) {
+  mockBackend.addDevice(
+      MockDevice("Hexagon", "HTP0", GGML_BACKEND_DEVICE_TYPE_GPU, "HTP"));
+  mockBackend.addDevice(createGPUDevice(ADRENO_DESC, OPENCL_BACK));
+  BackendInterface bckI = mockBackend.toBackendInterface();
+  const auto result =
+      chooseBackend(BackendType::GPU, bckI, MainGpu(0), {"opencl"});
+  expectChosen(result, BackendType::CPU, "none");
+}
+
 TEST_F(BackendSelectionTest, MainGpuIntegratedWarnsAboutRefusedDiscreteGpu) {
   mockBackend.addDevice(createGPUDevice("AMD Radeon", "ROCm0"));
   MainGpu mainGpu = MainGpuType::Integrated;

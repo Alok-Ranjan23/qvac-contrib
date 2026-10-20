@@ -201,3 +201,86 @@ test('an unpublished host is told which hosts have a runtime and to build from s
   )
   assert.match(err.message, /bare-make/)
 })
+
+test('Hexagon backend loading preserves DSP paths before registering backends', (t) => {
+  if (process.platform !== 'linux')
+    return t.skip('the Android loader fixture uses a Linux C++ host')
+  const fixture = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'qvac-fabric-hexagon-'))
+  t.after(() => fs.rmSync(fixture, { recursive: true, force: true }))
+  fs.writeFileSync(
+    path.join(fixture, 'ggml-backend.h'),
+    '#include <stddef.h>\nextern "C" void ggml_backend_load_all_from_path(const char*);\n' +
+      'extern "C" size_t ggml_backend_reg_count(void);\n'
+  )
+  const main = path.join(fixture, 'main.cpp')
+  fs.writeFileSync(
+    main,
+    `#include <cstdio>
+#include <cstdlib>
+#include "qvac-fabric.h"
+static int loads = 0;
+extern "C" void ggml_backend_load_all_from_path(const char* path) {
+  ++loads;
+  const char* dsp = std::getenv("DSP_LIBRARY_PATH");
+  const char* adsp = std::getenv("ADSP_LIBRARY_PATH");
+  std::printf("%s\\n%s\\n%s\\n", dsp ? dsp : "<unset>", adsp ? adsp : "<unset>", path);
+}
+extern "C" size_t ggml_backend_reg_count(void) { return 42; }
+int main() {
+  if (qvac_fabric_load_backends() != 42 || qvac_fabric_load_backends() != 42) return 1;
+  return loads == 1 ? 0 : 2;
+}
+`
+  )
+  const executables = new Map()
+  for (const enabled of [true, false]) {
+    const executable = path.join(fixture, enabled ? 'hexagon' : 'default')
+    const result = spawnSync(
+      process.env.CXX || 'c++',
+      [
+        '-std=c++20',
+        '-D__ANDROID__',
+        '-DQVAC_FABRIC_MODULE_NAME="qvac__fabric-android-arm64"',
+        ...(enabled ? ['-DQVAC_FABRIC_HEXAGON'] : []),
+        '-I' + fixture,
+        '-I' + path.join(packageRoot, 'include'),
+        path.join(packageRoot, 'addon/backends.cpp'),
+        main,
+        '-ldl',
+        '-pthread',
+        '-o',
+        executable
+      ],
+      { encoding: 'utf8' }
+    )
+    if (result.error?.code === 'ENOENT') return t.skip('a C++ compiler is not on PATH')
+    assert.equal(result.status, 0, result.stderr)
+    executables.set(enabled, executable)
+  }
+  const backends = path.join(fixture, 'backends')
+  const missing = path.join(fixture, 'missing')
+  fs.mkdirSync(backends)
+  fs.mkdirSync(missing)
+  fs.writeFileSync(path.join(backends, 'libggml-htp-v79.so'), 'DSP sidecar fixture')
+
+  function run({ dsp, adsp, directory = backends, enabled = true, expected }) {
+    const env = { ...process.env, QVAC_FABRIC_BACKENDS_DIR: directory }
+    delete env.DSP_LIBRARY_PATH
+    delete env.ADSP_LIBRARY_PATH
+    if (dsp !== undefined) env.DSP_LIBRARY_PATH = dsp
+    if (adsp !== undefined) env.ADSP_LIBRARY_PATH = adsp
+    const result = spawnSync(executables.get(enabled), [], { encoding: 'utf8', env })
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.stdout, `${expected}\n${adsp ?? '<unset>'}\n${directory}\n`)
+  }
+
+  run({ expected: backends })
+  run({ dsp: '/custom;;/vendor;', adsp: '/ignored', expected: `${backends};/custom;;/vendor;` })
+  run({ adsp: '/legacy;;/other;', expected: `${backends};/legacy;;/other;` })
+  run({ dsp: `/first;${backends};/last`, expected: `/first;${backends};/last` })
+  run({ adsp: `/first;${backends};/last`, expected: `/first;${backends};/last` })
+  run({ dsp: backends + '/other', expected: `${backends};${backends}/other` })
+  run({ dsp: '', adsp: '/ignored', expected: backends })
+  run({ adsp: '/legacy', directory: missing, expected: '<unset>' })
+  run({ dsp: '/custom', adsp: '/legacy', enabled: false, expected: '/custom' })
+})

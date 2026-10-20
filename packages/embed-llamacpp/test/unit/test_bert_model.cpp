@@ -1,12 +1,18 @@
+#include <barrier>
 #include <chrono>
+#include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
+#include <ggml-backend.h>
 #include <gtest/gtest.h>
 #include <inference-addon-cpp/Errors.hpp>
 #include <inference-addon-cpp/RuntimeStats.hpp>
@@ -17,9 +23,9 @@
 #include "addon/AddonCpp.hpp"
 #include "addon/BertErrors.hpp"
 #include "model-interface/BertModel.hpp"
+#include "model-interface/LlamaLazyInitializeBackend.hpp"
 #include "model-interface/logging.hpp"
 #include "test_common.hpp"
-
 namespace fs = std::filesystem;
 using namespace qvac_lib_inference_addon_cpp::logger;
 
@@ -212,6 +218,185 @@ protected:
   std::string getValidModelPath() { return test_model_path; }
   static std::string getInvalidModelPath() { return "nonexistent_model.gguf"; }
 };
+
+TEST(BertModelOutputTest, EmbeddingGemma2PreservesProjectedDimensions) {
+  const char* modelPath = std::getenv("EG2_TEST_MODEL");
+  if (modelPath == nullptr || *modelPath == '\0') {
+    GTEST_SKIP() << "Set EG2_TEST_MODEL to an EmbeddingGemma 2 GGUF checkpoint";
+  }
+  ASSERT_TRUE(fs::is_regular_file(modelPath));
+
+  BertModel model(
+      modelPath,
+      {{"device", "cpu"},
+       {"ctx-size", "256"},
+       {"batch-size", "256"},
+       {"parallel", "2"},
+       {"threads", "2"},
+       {"threads-batch", "2"},
+       {"embd-normalize", "2"}});
+  const auto embeddings = model.encodeHostF32Sequences(
+      {"task: search result | title: Password reset | text: Reset your "
+       "password from account settings.",
+       "task: search result | title: Weather | text: Rain is expected "
+       "tomorrow."});
+
+  ASSERT_EQ(llama_model_n_embd(model.getModel()), 512);
+  ASSERT_EQ(llama_model_n_embd_out(model.getModel()), 768);
+  ASSERT_EQ(embeddings.size(), 2U);
+  ASSERT_EQ(embeddings.embeddingSize(), 768U);
+  auto* ctx = const_cast<llama_context*>(model.getCtx());
+  for (std::size_t sequence = 0; sequence < embeddings.size(); ++sequence) {
+    const float* reference =
+        llama_get_embeddings_seq(ctx, static_cast<llama_seq_id>(sequence));
+    ASSERT_NE(reference, nullptr);
+    double referenceSquaredNorm = 0.0;
+    for (std::size_t i = 0; i < embeddings.embeddingSize(); ++i) {
+      ASSERT_TRUE(std::isfinite(reference[i]));
+      referenceSquaredNorm += static_cast<double>(reference[i]) * reference[i];
+    }
+    ASSERT_GT(referenceSquaredNorm, 0.0);
+    const double referenceNorm = std::sqrt(referenceSquaredNorm);
+    double squaredNorm = 0.0;
+    for (std::size_t i = 0; i < embeddings.embeddingSize(); ++i) {
+      const float value = embeddings[sequence][i];
+      ASSERT_TRUE(std::isfinite(value));
+      EXPECT_NEAR(value, reference[i] / referenceNorm, 1e-6);
+      squaredNorm += static_cast<double>(value) * value;
+    }
+    EXPECT_NEAR(squaredNorm, 1.0, 1e-5);
+  }
+}
+
+TEST(BertModelOutputTest, EmbeddingGemma2IndependentInstancesPreserveOutputs) {
+  const char* modelPath = std::getenv("EG2_TEST_MODEL");
+  if (modelPath == nullptr || *modelPath == '\0') {
+    GTEST_SKIP() << "Set EG2_TEST_MODEL to an EmbeddingGemma 2 GGUF checkpoint";
+  }
+  ASSERT_TRUE(fs::is_regular_file(modelPath));
+  const char* configuredBackends = std::getenv("QVAC_FABRIC_BACKENDS_DIR");
+  const std::string backendsDir =
+      configuredBackends == nullptr ? "" : configuredBackends;
+  LlamaBackendsHandle backends(backendsDir);
+  std::unordered_map<std::string, std::string> config{
+      {"device", "cpu"},
+      {"ctx-size", "256"},
+      {"batch-size", "256"},
+      {"parallel", "2"},
+      {"threads", "2"},
+      {"threads-batch", "2"},
+      {"embd-normalize", "2"},
+      {"gpu-layers", "0"}};
+  ggml_backend_dev_t selectedDevice = nullptr;
+  // Set the exact runtime device name, for example HTP0 or HTP0:0.
+  const char* requestedHtp = std::getenv("EG2_TEST_HTP_DEVICE");
+  if (requestedHtp != nullptr) {
+    for (std::size_t index = 0; index < ggml_backend_dev_count(); ++index) {
+      auto* device = ggml_backend_dev_get(index);
+      if (std::string(ggml_backend_dev_name(device)) != requestedHtp) {
+        continue;
+      }
+      const auto registry = ggml_backend_dev_backend_reg(device);
+      ASSERT_NE(registry, nullptr);
+      ASSERT_EQ(std::string(ggml_backend_reg_name(registry)), "HTP");
+      ASSERT_EQ(ggml_backend_dev_type(device), GGML_BACKEND_DEVICE_TYPE_GPU);
+      selectedDevice = device;
+      config["device"] = "gpu";
+      config["main-gpu"] = std::to_string(index);
+      config["gpu-layers"] = "99";
+      config["flash-attn"] = "on";
+      break;
+    }
+    ASSERT_NE(selectedDevice, nullptr)
+        << "Requested exact HTP device was not found: " << requestedHtp;
+  }
+
+  BertModel first(modelPath, config, backendsDir);
+  first.waitForLoadInitialization();
+  BertModel second(modelPath, config, backendsDir);
+  second.waitForLoadInitialization();
+  ASSERT_TRUE(first.isLoaded());
+  ASSERT_TRUE(second.isLoaded());
+  ASSERT_NE(first.getModel(), second.getModel());
+  ASSERT_NE(first.getCtx(), second.getCtx());
+  for (const auto* model : {&first, &second}) {
+    ASSERT_EQ(llama_model_n_embd_out(model->getModel()), 768);
+    if (selectedDevice != nullptr) {
+      const auto& devices = model->getCommonParams().devices;
+      ASSERT_FALSE(devices.empty());
+      ASSERT_EQ(devices.front(), selectedDevice);
+    }
+  }
+
+  const std::string firstText =
+      "task: search result | title: Password reset | text: Reset your password "
+      "from account settings.";
+  const std::string secondText =
+      "task: search result | title: Weather | text: Rain is expected tomorrow.";
+  const auto encode = [](BertModel& model, const std::string& text) {
+    const auto output = model.process(std::any(text));
+    const auto& embeddings = std::any_cast<const BertEmbeddings&>(output);
+    if (embeddings.size() != 1 || embeddings.embeddingSize() != 768) {
+      throw std::runtime_error("Expected one 768-dimensional embedding");
+    }
+    return std::vector<float>(embeddings[0].begin(), embeddings[0].end());
+  };
+  const auto verify = [](const std::vector<float>& values) {
+    ASSERT_EQ(values.size(), 768U);
+    double squaredNorm = 0.0;
+    for (float value : values) {
+      ASSERT_TRUE(std::isfinite(value));
+      squaredNorm += static_cast<double>(value) * value;
+    }
+    EXPECT_NEAR(squaredNorm, 1.0, 1e-5);
+  };
+  const auto similarity = [](const std::vector<float>& a,
+                             const std::vector<float>& b) {
+    double dot = 0.0, aa = 0.0, bb = 0.0;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+      dot += static_cast<double>(a[i]) * b[i];
+      aa += static_cast<double>(a[i]) * a[i];
+      bb += static_cast<double>(b[i]) * b[i];
+    }
+    return dot / std::sqrt(aa * bb);
+  };
+  const auto firstBaseline = encode(first, firstText);
+  const auto secondBaseline = encode(second, secondText);
+  verify(firstBaseline);
+  verify(secondBaseline);
+  for (int round = 0; round < 5; ++round) {
+    SCOPED_TRACE(round);
+    std::barrier start(3);
+    auto left = std::async(std::launch::async, [&] {
+      start.arrive_and_wait();
+      return encode(first, firstText);
+    });
+    auto right = std::async(std::launch::async, [&] {
+      start.arrive_and_wait();
+      return encode(second, secondText);
+    });
+    start.arrive_and_wait();
+    const auto firstOutput = left.get();
+    const auto secondOutput = right.get();
+    verify(firstOutput);
+    verify(secondOutput);
+    EXPECT_GE(similarity(firstOutput, firstBaseline), 0.998);
+    EXPECT_GE(similarity(secondOutput, secondBaseline), 0.998);
+    if (round == 1) {
+      std::string overlength;
+      for (int i = 0; i < 512; ++i) {
+        overlength += " password";
+      }
+      try {
+        first.process(std::any(overlength));
+        FAIL() << "Overlength input must be rejected before recovery rounds";
+      } catch (const qvac_errors::StatusError& error) {
+        EXPECT_NE(
+            error.codeString().find("ContextOverflow"), std::string::npos);
+      }
+    }
+  }
+}
 
 TEST_F(BertModelTest, IsLoadedBeforeInit) {
   if (!fs::exists(getValidModelPath())) {
@@ -1417,6 +1602,31 @@ TEST_F(BertModelTest, BackendWithSplitModeRejected) {
         << error.what();
   }
 }
+
+#if defined(__ANDROID__)
+TEST_F(BertModelTest, SetupParamsAndroidAllowsSingleDeviceIndex) {
+  for (const char* key : {"main-gpu", "main_gpu"}) {
+    EXPECT_NO_THROW(setupParams(
+        getInvalidModelPath(),
+        {{"device", "cpu"}, {key, "0"}, {"split-mode", "none"}}));
+  }
+}
+
+TEST_F(BertModelTest, SetupParamsAndroidRejectsMultiDeviceConfiguration) {
+  for (const char* key : {"tensor-split", "tensor_split"}) {
+    EXPECT_THROW(
+        setupParams(
+            getInvalidModelPath(),
+            {{"device", "cpu"}, {"main-gpu", "0"}, {key, "1,1"}}),
+        qvac_errors::StatusError);
+  }
+  EXPECT_THROW(
+      setupParams(
+          getInvalidModelPath(),
+          {{"device", "cpu"}, {"main-gpu", "0"}, {"split-mode", "layer"}}),
+      qvac_errors::StatusError);
+}
+#endif
 
 TEST_F(BertModelTest, SetupParamsDefaultsCpuPollingToZero) {
   const auto setup = setupParams(getInvalidModelPath(), {{"device", "cpu"}});

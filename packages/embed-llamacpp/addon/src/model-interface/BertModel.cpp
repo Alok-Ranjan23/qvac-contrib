@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <any>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 #include <common/common.h>
+#include <ggml-backend.h>
 #include <inference-addon-cpp/Errors.hpp>
 #include <llama-cpp.h>
 #include <llama.h>
@@ -20,6 +22,75 @@ using namespace qvac_lib_infer_llamacpp_embed::errors;
 using namespace qvac_lib_infer_llamacpp_embed::logging;
 
 namespace {
+
+std::shared_ptr<std::mutex>
+selectedHtpExecutionMutex(const common_params& params) {
+  if (params.split_mode != LLAMA_SPLIT_MODE_NONE) {
+    return {};
+  }
+
+  // --device pins the selection; use its handle rather than a registry index.
+  ggml_backend_dev_t selected = nullptr;
+  for (const auto device : params.devices) {
+    if (device == nullptr) {
+      break;
+    }
+    if (selected != nullptr) {
+      return {};
+    }
+    selected = device;
+  }
+  if (selected == nullptr) {
+    return {};
+  }
+  const auto registry = ggml_backend_dev_backend_reg(selected);
+  const char* registryName =
+      registry ? ggml_backend_reg_name(registry) : nullptr;
+  if (registryName == nullptr || std::string_view(registryName) != "HTP") {
+    return {};
+  }
+
+  // HTP backend handles for one device share graph caches, batching and queues.
+  static std::mutex registryMutex;
+  static std::unordered_map<ggml_backend_dev_t, std::weak_ptr<std::mutex>>
+      gates;
+  const std::lock_guard lock(registryMutex);
+  auto& entry = gates[selected];
+  auto gate = entry.lock();
+  if (!gate) {
+    gate = std::make_shared<std::mutex>();
+    entry = gate;
+  }
+  return gate;
+}
+
+class HtpExecutionGuard {
+public:
+  HtpExecutionGuard(
+      const std::shared_ptr<std::mutex>& mutex, llama_context* ctx)
+      : ctx_(ctx) {
+    if (mutex && ctx != nullptr) {
+      lock_ = std::unique_lock<std::mutex>(*mutex);
+    }
+  }
+
+  HtpExecutionGuard(const HtpExecutionGuard&) = delete;
+  HtpExecutionGuard& operator=(const HtpExecutionGuard&) = delete;
+  HtpExecutionGuard(HtpExecutionGuard&&) = delete;
+  HtpExecutionGuard& operator=(HtpExecutionGuard&&) = delete;
+
+  ~HtpExecutionGuard() {
+    // Decode can fail or be cancelled before an embedding getter synchronizes.
+    // Drain this context while the device gate is still held on every exit.
+    if (lock_.owns_lock()) {
+      llama_synchronize(ctx_);
+    }
+  }
+
+private:
+  llama_context* ctx_;
+  std::unique_lock<std::mutex> lock_;
+};
 
 void batchAddSeq(
     llama_batch& batch, const std::vector<int32_t>& tokens,
@@ -414,7 +485,8 @@ void BertModel::onLoaded(llama_model* model, llama_context* ctx) {
   pooling_type = llama_pooling_type(ctx_);
   vocab_ = llama_model_get_vocab(model_);
   batch_ = llama_batch_init(loader_.params().n_batch, 0, 1);
-  n_embd = llama_model_n_embd(model_);
+  n_embd = llama_model_n_embd_out(model_);
+  htpExecutionMutex_ = selectedHtpExecutionMutex(loader_.params());
 
   // Abort a pass in llama_decode once cancel() is requested.
   abortDecodeWhen(ctx_, stopCancelled_);
@@ -446,6 +518,7 @@ const common_params& BertModel::getCommonParams() const {
 bool BertModel::isLoaded() const { return loader_.isLoaded(); }
 
 std::any BertModel::process(const std::any& input) {
+  loader_.waitForLoadInitialization();
   // Clear batch state from any previous inference to ensure deterministic
   // results
   reset();
@@ -472,6 +545,7 @@ void BertModel::initializeBackend(
 }
 
 void BertModel::reset() {
+  const HtpExecutionGuard guard(htpExecutionMutex_, ctx_);
   stopCancelled_.store(false);
   // Clear the batch state - this is the most important part
   common_batch_clear(batch_);
@@ -530,6 +604,7 @@ BertModel::tokenizeInput(const std::vector<std::string>& prompts) const {
 BertEmbeddings BertModel::processBatched(
     const std::vector<std::vector<int32_t>>& inputs,
     std::size_t nPrompts) const {
+  const HtpExecutionGuard guard(htpExecutionMutex_, ctx_);
   // count number of embeddings
   std::size_t embeddingCount = 0;
   if (pooling_type == LLAMA_POOLING_TYPE_NONE) {

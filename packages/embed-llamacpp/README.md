@@ -193,6 +193,21 @@ may still appear on `stderr` before the addon installs its callback.
 | System with dedicated GPU only  | ✅ Uses dedicated GPU                 | ✅ Uses dedicated GPU               | ❌ Falls back to CPU                |
 | System with both                | ✅ Uses dedicated GPU (preferred)     | ✅ Uses dedicated GPU               | ✅ Uses integrated GPU              |
 
+#### Snapdragon Hexagon selection
+
+An Android ARM64 Fabric build with Hexagon enabled can select an enumerated HTP device using `device: "gpu"` and its numeric `main-gpu` index, with `gpu_layers` set to the number of layers to offload. Use the full ggml device list printed at load time to find the index; it can change between builds. Leave `backend` and `split-mode` unset for this selection. HTP devices remain excluded from automatic GPU selection and multi-GPU split modes.
+
+This requires a matching Fabric runtime with the model architecture, Hexagon host backend and DSP sidecars, plus device access to FastRPC. A selected device or a successful model load does not establish DSP execution; validate compute profiling and embedding parity on the target device before reporting acceleration.
+
+Separate loaded embedding instances selecting the same HTP device serialize
+their reset and inference work, including synchronization before releasing the
+device for another instance. Different HTP devices use separate gates; CPU and
+OpenCL calls do not acquire this gate. Finish model initialization before
+starting concurrent calls, and join all calls before loading or destroying
+models on that HTP device. Concurrent calls on the same instance and concurrent
+use through other Hexagon clients are outside this guarantee. Cancellation
+remains available while inference is running.
+
 
 ### 4. Instantiate the model
 
@@ -533,6 +548,15 @@ Results are continuously updated with new releases to ensure up-to-date performa
 Integration tests are located in [`test/integration/`](./test/integration/) and cover core embed functionality: single-file model load → embed → unload, multi-instance concurrency (two embed instances running simultaneously, repeated load/unload cycles, unloading one instance while another processes), and the public `run()` / `cancel()` lifecycle. `laya.test.js` covers `LayaDecisions` end to end: every question type, batches, CPU and GPU, request errors, cancel, and load errors. It runs when `LAYA_TEST_MODEL` points at a Laya GGUF and is skipped otherwise, since no Laya GGUF is pinned in `models.manifest.json` yet. `rerank.test.js` covers `Reranker` with the pinned jina-reranker-v1-tiny-en: ranking, batching, CPU and GPU, request errors, cancel, and load errors. These tests help prevent regressions and ensure the library remains stable as contributions are made to the project.
 
 C++ unit tests live under [`test/unit/`](./test/unit/) and exercise the native components at a lower level, including backend selection, single-step inference, end-to-end embedding generation, pooling, Laya decisions and reranking. These tests validate the native implementation and help catch issues early in development. The Laya tests that run a model need a Laya GGUF, from `LAYA_TEST_MODEL` or at `models/unit-test/laya-test.gguf`, and are skipped without one. The rerank tests need a reranker GGUF, from `RERANK_TEST_MODEL` or at `models/unit-test/rerank-test.gguf` ([jina-reranker-v1-tiny-en](https://huggingface.co/ggml-org/models/tree/main/jina-reranker-v1-tiny-en), as CI downloads it).
+
+Set `EG2_TEST_MODEL` to an EmbeddingGemma 2 GGUF to run the projected-output regression. It checks that both returned embeddings contain all 768 output values, rather than the 512-value hidden width, and match the normalized pooled model output. It skips when the model path is unset.
+
+The same model also enables the independent-instance regression: five
+synchronized rounds compare two loaded instances with their own baselines and
+check recovery after an overlength input. It runs on CPU by default. Set
+`EG2_TEST_HTP_DEVICE` to the exact enumerated HTP name (for example `HTP0` or
+`HTP0:0`) to require that device and verify both instances select it; the test
+fails if that HTP device is unavailable.
 
 > **Note:** This package covers embeddings, rerankers and Laya decision models. There is no text generation, tool-calling, multimodal, KV-cache, or chat-template support — those features belong to the LLM addon ([`@qvac/llm-llamacpp`](../llm-llamacpp/)).
 

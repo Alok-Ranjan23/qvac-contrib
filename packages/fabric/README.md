@@ -149,6 +149,71 @@ falls back to TCP because the dynamic loader resolves it before loading the RPC
 backend. Other Fabric backends remain available when the RPC backend cannot be
 loaded.
 
+### Opt-in Hexagon development build
+
+Hexagon is disabled by default. An Android arm64 source build can opt in with
+`-D QVAC_HEXAGON=ON`. This requests the registry port's `hexagon-backend`
+feature and requires Hexagon SDK 6.6.0.0 with Hexagon Tools 19.0.07. Set
+`HEXAGON_SDK_ROOT` and, when the tools are installed separately,
+`HEXAGON_TOOLS_ROOT` before configuring; the Android triplet tracks both
+values in the vcpkg cache identity. Missing or mismatched tools fail the build.
+
+The registered development overlay pins engine revision
+`370265fedc9c69a4ca2ebd80516bde34892e9f7d` with EmbeddingGemma 2 support and
+applies `hexagon-gelu.patch` for the standard/quick Hexagon GELU dispatch fix
+and F32 QUICK GELU CPU precision fixes. Explicit CPU reference mode evaluates
+QUICK GELU directly. The optimized unary F32 path retains lookup-based
+execution with F32 table outputs, avoiding an additional FP16 output rounding;
+the existing FP16 and gated-operation tables are unchanged. The extra F32
+table uses 256 KiB. The archive SHA-512 and patch live in
+`vcpkg-overlays/ports/qvac-fabric/`; this
+does not change a released package version. The overlay changes the engine
+source for every Fabric platform, including Hexagon-disabled builds, so run
+normal Fabric and consumer checks before merging. Replace it with a matched
+engine release and registry pin when those are available, following
+[INTEGRATION.md](./INTEGRATION.md#fabric-stack-prs-parallel-qvac-fabric-development).
+
+```bash
+export HEXAGON_SDK_ROOT=/path/to/Hexagon_SDK/6.6.0.0
+export HEXAGON_TOOLS_ROOT="$HEXAGON_SDK_ROOT/tools/HEXAGON_Tools/19.0.07"
+bare-make generate --platform android --arch arm64 -D QVAC_HEXAGON=ON
+bare-make build
+bare-make install
+npm run link:platform
+```
+
+The platform package stages `libqvac-ggml-hexagon.so` with the other host
+backends and preserves `libggml-htp-v73.so`, `v75`, `v79` and `v81` as raw DSP
+sidecars directly beside those backends in the runtime companion directory.
+Bare-link copies these direct `.so` companions without rewriting their contents.
+The sidecars contain Hexagon ELF code. For an extracted runtime directory,
+`qvac_fabric_load_backends()` adds that directory to `DSP_LIBRARY_PATH`,
+preserving existing semicolon-separated entries without adding a duplicate.
+If `DSP_LIBRARY_PATH` is unset, existing `ADSP_LIBRARY_PATH` entries are carried
+into the new preferred variable; `ADSP_LIBRARY_PATH` itself stays unchanged.
+A caller that supplies its own backend loader/path must configure the DSP
+search path before loading Hexagon.
+
+The consuming Android application must extract its native libraries to a real
+directory before FastRPC loads the sidecars. Enable
+`android.packaging.jniLibs.useLegacyPackaging = true` in the application's
+Gradle configuration and verify that the final merged manifest has
+`android:extractNativeLibs="true"`. An APK-internal path cannot serve as the
+DSP search directory. Declare optional access to the device's FastRPC library
+inside the manifest's `<application>` element:
+
+```xml
+<uses-native-library android:name="libcdsprpc.so" android:required="false" />
+```
+
+Keep any SDK stub `libcdsprpc.so` out of the APK, for example with
+`android.packaging.jniLibs.excludes += "**/libcdsprpc.so"`. These are consumer
+application settings; the Fabric build does not change Expo or Kotlin app
+configuration. Verify all four sidecars in the final APK and extracted
+installation, device vendor-library access, HTP session creation and real
+embedding execution in the installed app. A source build or shell benchmark
+does not establish mobile SDK support.
+
 ## Supported platforms
 
 | Platform | Triplet | Backends |

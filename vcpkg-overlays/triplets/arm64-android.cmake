@@ -10,3 +10,7 @@ set(VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_ABI=arm64-v8a)
 
 # Build only Release configuration to avoid vcpkg debug dependency builds in CI.
 set(VCPKG_BUILD_TYPE release)
+
+if(PORT STREQUAL "qvac-fabric")
+  list(APPEND VCPKG_ENV_PASSTHROUGH HEXAGON_SDK_ROOT HEXAGON_TOOLS_ROOT)
+endif()

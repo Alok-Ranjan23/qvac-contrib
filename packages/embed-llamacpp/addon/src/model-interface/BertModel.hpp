@@ -80,6 +80,7 @@ private:
   const llama_vocab* vocab_;
   mutable struct llama_batch batch_;
   mutable std::atomic<bool> stopCancelled_{false};
+  std::shared_ptr<std::mutex> htpExecutionMutex_;
 
 public:
   // These using definitions are accessed by the Addon<BertModel> template.

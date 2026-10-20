@@ -421,6 +421,22 @@ std::pair<BackendType, std::string> backend_selection::chooseBackend(
         const size_t deviceCount = bckI.ggml_backend_dev_count();
         if (deviceIndex >= 0 &&
             static_cast<size_t>(deviceIndex) < deviceCount) {
+          const ggml_backend_dev_t dev =
+              bckI.ggml_backend_dev_get(static_cast<size_t>(deviceIndex));
+          const ggml_backend_reg_t reg = bckI.ggml_backend_dev_backend_reg(dev);
+          // HTP is opt-in by device index; keep it out of automatic GPU
+          // selection.
+          if (backendOverride.empty() && reg != nullptr &&
+              lowerCopy(bckI.ggml_backend_reg_name(reg)) == "htp" &&
+              bckI.ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_GPU) {
+            const DeviceDescription devDescr(
+                dev, GGML_BACKEND_DEVICE_TYPE_GPU, bckI);
+            bckI.llamaLogCallback(
+                GGML_LOG_LEVEL_INFO,
+                "Chosen HTP backend (main-gpu index)",
+                nullptr);
+            return {BackendType::GPU, devDescr.gpuBackend};
+          }
           ::tryEmplaceDevice(
               bckI,
               static_cast<size_t>(deviceIndex),

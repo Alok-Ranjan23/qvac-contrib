@@ -26,6 +26,18 @@
     }
   ],
   "features": {
+    "hexagon": {
+      "description": "Build the Android arm64 Hexagon backend and DSP sidecars",
+      "dependencies": [
+        {
+          "name": "qvac-fabric",
+          "platform": "android & arm64",
+          "features": [
+            "hexagon-backend"
+          ]
+        }
+      ]
+    },
     "cuda-jetson": {
       "description": "Build the CUDA 12 Jetson backend module",
       "dependencies": [

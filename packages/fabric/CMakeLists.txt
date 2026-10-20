@@ -12,6 +12,16 @@ if(QVAC_CUDA_JETSON)
   list(APPEND VCPKG_MANIFEST_FEATURES "cuda-jetson")
 endif()
 
+option(QVAC_HEXAGON "Build the Android arm64 Hexagon backend and DSP sidecars" OFF)
+if(QVAC_HEXAGON)
+  list(APPEND VCPKG_MANIFEST_FEATURES "hexagon")
+  foreach(_hexagon_path HEXAGON_SDK_ROOT HEXAGON_TOOLS_ROOT)
+    if(DEFINED ${_hexagon_path})
+      set(ENV{${_hexagon_path}} "${${_hexagon_path}}")
+    endif()
+  endforeach()
+endif()
+
 find_package(cmake-bare REQUIRED PATHS node_modules/cmake-bare)
 find_package(cmake-vcpkg REQUIRED PATHS node_modules/cmake-vcpkg)
 
@@ -146,11 +156,29 @@ qvac_fabric_module_name("${_fabric_host}" _fabric_module_name)
 
 add_bare_module(qvac-fabric NAME ${_fabric_module_name} EXPORTS ${BACKEND_DL_LIBS})
 
+if(QVAC_HEXAGON)
+  if(NOT _fabric_host STREQUAL "android-arm64")
+    message(FATAL_ERROR "qvac-fabric: QVAC_HEXAGON requires android-arm64")
+  endif()
+  if(NOT TARGET ggml::ggml-hexagon)
+    message(FATAL_ERROR "qvac-fabric: Hexagon was requested but the engine package exports no Hexagon backend")
+  endif()
+  foreach(_hexagon_arch IN ITEMS 73 75 79 81)
+    set(_hexagon_skel "${VCPKG_INSTALLED_PATH}/share/qvac-fabric/hexagon/libggml-htp-v${_hexagon_arch}.so")
+    if(NOT EXISTS "${_hexagon_skel}")
+      message(FATAL_ERROR "qvac-fabric: missing DSP sidecar ${_hexagon_skel}")
+    endif()
+    # Bare-link copies direct .so companions without rewriting their contents.
+    install(FILES "${_hexagon_skel}" DESTINATION "${_fabric_host}/${_fabric_module_name}")
+  endforeach()
+endif()
+
 target_sources(${qvac-fabric} PRIVATE addon/binding.cpp addon/backends.cpp)
 target_include_directories(${qvac-fabric} PRIVATE include)
 target_compile_definitions(${qvac-fabric} PRIVATE
   QVAC_FABRIC_BUILD
-  QVAC_FABRIC_MODULE_NAME="${_fabric_module_name}")
+  QVAC_FABRIC_MODULE_NAME="${_fabric_module_name}"
+  $<$<BOOL:${QVAC_HEXAGON}>:QVAC_FABRIC_HEXAGON>)
 
 # Force-include the full llama / common / mtmd object code into the shared
 # module so the entire public API is present (the carrier addon itself does not

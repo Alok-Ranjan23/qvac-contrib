@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <mutex>
@@ -81,6 +82,41 @@ std::string g_dir;
 
 std::once_flag g_loadOnce;
 
+#if defined(__ANDROID__) && defined(QVAC_FABRIC_HEXAGON)
+void configureHexagonPath(const char* backendsDir) {
+  if (*backendsDir == '\0')
+    return;
+  const fs::path skels = fs::path(backendsDir);
+  std::error_code ec;
+  bool haveSkel = false;
+  for (const int arch : {73, 75, 79, 81}) {
+    if (fs::is_regular_file(
+            skels / ("libggml-htp-v" + std::to_string(arch) + ".so"), ec)) {
+      haveSkel = true;
+      break;
+    }
+  }
+  if (!haveSkel)
+    return;
+
+  const std::string directory = utf8(skels);
+  const char* env = std::getenv("DSP_LIBRARY_PATH");
+  // Modern FastRPC prefers DSP_LIBRARY_PATH and preserves its vendor defaults.
+  // Carry forward ADSP-only custom paths before establishing the preferred one.
+  if (env == nullptr)
+    env = std::getenv("ADSP_LIBRARY_PATH");
+  const std::string existing = env != nullptr ? env : "";
+  // FastRPC separates Android DSP search paths with semicolons.
+  const bool alreadyPresent =
+      (";" + existing + ";").find(";" + directory + ";") != std::string::npos;
+  const std::string searchPath =
+      alreadyPresent ? existing
+                     : directory + (existing.empty() ? "" : ";" + existing);
+  if (setenv("DSP_LIBRARY_PATH", searchPath.c_str(), 1) != 0)
+    std::fputs("qvac-fabric: failed to configure DSP_LIBRARY_PATH\n", stderr);
+}
+#endif
+
 } // namespace
 
 extern "C" const char* qvac_fabric_backends_dir(void) {
@@ -91,6 +127,9 @@ extern "C" const char* qvac_fabric_backends_dir(void) {
 extern "C" size_t qvac_fabric_load_backends(void) {
   std::call_once(g_loadOnce, [] {
     const char* path = qvac_fabric_backends_dir();
+#if defined(__ANDROID__) && defined(QVAC_FABRIC_HEXAGON)
+    configureHexagonPath(path);
+#endif
     ggml_backend_load_all_from_path(*path != '\0' ? path : nullptr);
   });
   return ggml_backend_reg_count();
