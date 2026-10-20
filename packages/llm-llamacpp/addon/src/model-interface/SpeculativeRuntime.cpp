@@ -257,6 +257,57 @@ SpeculativeFitModel::create(const common_params& params) {
   return model;
 }
 
+bool SpeculativeFitModel::addMemory(
+    uint32_t nCtx, const std::vector<ggml_backend_dev_t>& devices,
+    common_device_memory_data_vec& breakdown) const {
+  if (breakdown.size() != devices.size() + 1) {
+    return false;
+  }
+  // Fabric measures the draft side at the target's context.
+  llama_context_params cparams = cparams_;
+  cparams.n_ctx = nCtx;
+  std::vector<ggml_backend_dev_t> draftDevices;
+  uint32_t nLayer = 0;
+  uint32_t nCtxTrain = 0;
+  uint32_t nExpert = 0;
+  common_device_memory_data_vec measured;
+  try {
+    measured = common_get_device_memory_data(
+        extra_.path_model,
+        &mparams_,
+        &cparams,
+        draftDevices,
+        nLayer,
+        nCtxTrain,
+        nExpert,
+        GGML_LOG_LEVEL_INFO);
+  } catch (const std::exception&) {
+    return false;
+  }
+  if (measured.size() != draftDevices.size() + 1) {
+    return false;
+  }
+  const auto add = [countWeights = !extra_.shares_model](
+                       common_device_memory_data& into,
+                       const common_device_memory_data& from) {
+    if (countWeights) {
+      into.model += from.model;
+    }
+    into.context += from.context;
+    into.compute += from.compute;
+  };
+  add(breakdown.back(), measured.back());
+  for (size_t draft = 0; draft < draftDevices.size(); ++draft) {
+    const auto target =
+        std::find(devices.begin(), devices.end(), draftDevices[draft]);
+    if (target != devices.end()) {
+      add(breakdown[static_cast<size_t>(target - devices.begin())],
+          measured[draft]);
+    }
+  }
+  return true;
+}
+
 std::unique_ptr<SpeculativeRuntime> SpeculativeRuntime::create(
     common_params& params, llama_model* modelTgt, llama_context* ctxTgt) {
   if (!hasDraftContext(params.speculative)) {

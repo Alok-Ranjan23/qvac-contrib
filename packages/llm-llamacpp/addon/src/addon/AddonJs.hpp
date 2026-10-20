@@ -3,6 +3,7 @@
 #include <any>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <functional>
 #include <future>
 #include <memory>
@@ -667,9 +668,14 @@ inline FitResult runFit(FitRequest request) {
     return errorResult("unsupported-config");
   }
   // The DFlash draft model is a second file the fit reads; probed like the
-  // target model above.
+  // target model above. The load also requires a regular file, and `fopen`
+  // opens a directory on POSIX.
   if (const std::string& draftPath = loadParams.speculative.draft.mparams.path;
       !draftPath.empty()) {
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(draftPath, error)) {
+      return errorResult("model-unreadable");
+    }
     if (std::FILE* file = std::fopen(draftPath.c_str(), "rb")) {
       std::fclose(file);
     } else {
@@ -801,6 +807,11 @@ inline FitResult runFit(FitRequest request) {
     measured = false;
     devices.clear();
     breakdown.clear();
+  }
+  // The verdict counted the draft context next to the target; so do the
+  // per-device figures. A draft side fabric cannot measure stays out of both.
+  if (measured && speculativeFit) {
+    speculativeFit->addMemory(cparams.n_ctx, devices, breakdown);
   }
 
   // The probe returns one row per device the model was assigned to, then a

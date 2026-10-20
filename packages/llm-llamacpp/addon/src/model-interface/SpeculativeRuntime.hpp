@@ -87,6 +87,16 @@ public:
   create(const common_params& params);
   [[nodiscard]] const common_fit_extra_model* extra() const { return &extra_; }
 
+  /// Adds the draft side's memory at context `nCtx` to `breakdown`, the rows
+  /// `common_get_device_memory_data` returned for the target on `devices`,
+  /// laid out as fabric's fit lays it out: rows matched by device, the host
+  /// row added whole, and an MTP context's weights left out because the
+  /// target's rows already hold them. False, with `breakdown` untouched, when
+  /// the draft side cannot be measured; the fit then leaves it out too.
+  bool addMemory(
+      uint32_t nCtx, const std::vector<ggml_backend_dev_t>& devices,
+      common_device_memory_data_vec& breakdown) const;
+
 private:
   SpeculativeFitModel() = default;
   common_params params_;

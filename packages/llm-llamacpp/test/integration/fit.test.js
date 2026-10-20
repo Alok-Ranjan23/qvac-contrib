@@ -172,6 +172,50 @@ test('a cpu load is refused', { timeout: 600_000 }, async (t) => {
   t.is(fit.reason, 'unsupported-config')
 })
 
+// ggml-org's quant keeps the MTP layers; mobile pre-stages it only for the
+// speculative-decoding shards.
+const MTP_MODEL = 'Qwen3.5-0.8B-MTP-Q8_0.gguf'
+
+test(
+  'the MTP draft context is counted in the projection',
+  { timeout: 600_000, skip: isMobile },
+  async (t) => {
+    const [name, dir] = await ensureModel({ modelName: MTP_MODEL })
+    const file = path.join(dir, name)
+    // A pinned context and placement keep the two projections comparable.
+    const pinned = { 'ctx-size': '4096', 'gpu-layers': '0' }
+    const plain = await assess(file, pinned)
+    const mtp = await assess(file, { ...pinned, 'spec-type': 'draft-mtp' })
+
+    t.ok(mtp.status === 'fits' || mtp.status === 'does-not-fit', 'a verdict, not an error')
+    const context = (fit) => fit.devices.reduce((total, row) => total + row.contextBytes, 0)
+    t.ok(
+      context(mtp) > context(plain),
+      `the draft context's memory is in the figures (${context(mtp)} > ${context(plain)})`
+    )
+  }
+)
+
+test('an invalid speculative config is refused', { timeout: 600_000 }, async (t) => {
+  const fit = await assess(await modelPath(), {
+    'spec-type': 'draft-mtp',
+    'spec-draft-model': path.join(os.tmpdir(), 'draft.gguf')
+  })
+
+  t.is(fit.status, 'error')
+  t.is(fit.reason, 'unsupported-config', 'a draft model belongs to draft-dflash only')
+})
+
+test('a draft model that is not a file is unreadable', { timeout: 600_000 }, async (t) => {
+  const fit = await assess(await modelPath(), {
+    'spec-type': 'draft-dflash',
+    'spec-draft-model': os.tmpdir()
+  })
+
+  t.is(fit.status, 'error')
+  t.is(fit.reason, 'model-unreadable', 'the load requires a regular file too')
+})
+
 // A margin is free memory the projection may not place into, so one as large
 // as the device leaves no room to offload. Each projection reads free memory
 // again, and another job on a shared GPU moves it between calls, so the

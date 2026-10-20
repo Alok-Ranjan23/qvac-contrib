@@ -450,6 +450,8 @@ fit.hostBytes // the same, for the trailing host row
 
 `config` is the load, exactly as `loadModel` takes it. The projection resolves it with the same code that load runs, so every setting reaches the fitter the way it would reach the engine, and a load the engine would refuse is refused here as `status: "error"` with `unsupported-config`. A setting left out takes llama's default.
 
+With `spec-type: 'draft-mtp'` the MTP draft context is fitted next to the model, as the load fits it, and its memory is in the verdict and in the per-device figures. A DFlash draft model is passed to the fit the same way, but fabric cannot measure it yet, so neither counts it (see [Speculative decoding](#speculative-decoding-mtp-dflash)).
+
 Pinning `gpu-layers` fixes the placement: the fitter refuses to move layers off a device the load claimed, so the answer is whether that exact placement fits, never a reduced one. Leave it unset for a projection that can place the model itself.
 
 `minCtxSize` sets a floor the fitter may not reduce the context below, defaulting to llama's own `fit-ctx` of 4096. `marginBytes` is the memory to leave free on every device, defaulting to llama's `fit-target` of 1 GiB per device. `backendsDir` is where the dynamically-loaded ggml backends live.
