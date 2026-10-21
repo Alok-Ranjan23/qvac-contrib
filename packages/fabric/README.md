@@ -167,7 +167,7 @@ branch, so workflow changes must be available there before those runs can
 exercise the new configuration.
 
 The registered development overlay pins engine revision
-`7b70daebc785ee1836b8d98988a3fa79fc4f28e0` from engine PR
+`d4fa39a8d4e075d093303fbd9adebc6c4d40c0f2` from engine PR
 [#402](https://github.com/tetherto/qvac-fabric-llm.cpp/pull/402). It includes
 the standard/quick Hexagon GELU dispatch and F32 QUICK GELU CPU precision
 fixes, plus the BF16 projection acceleration. Explicit CPU reference mode
