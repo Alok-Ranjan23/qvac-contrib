@@ -533,6 +533,38 @@ jobs:
           fi
           echo "DEFINES=$DEFINES" >> "$GITHUB_ENV"
 
+      - name: Cache Hexagon SDK
+        if: matrix.platform == 'android' && matrix.arch == 'arm64' && contains(env.DEFINES, 'QVAC_HEXAGON=ON')
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # 5.0.4
+        with:
+          path: ${{ runner.temp }}/hexagon-sdk/6.6.0.0
+          key: hexagon-sdk-linux-x64-6.6.0.0-4a916e42c1dab9efdf2e58773f901ea780fa43c907bf054ab76572a3b3d942f4
+
+      - name: Setup Hexagon SDK
+        if: matrix.platform == 'android' && matrix.arch == 'arm64' && contains(env.DEFINES, 'QVAC_HEXAGON=ON')
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_dir="$RUNNER_TEMP/hexagon-sdk/6.6.0.0"
+          if [ ! -f "$sdk_dir/hexagon_sdk.json" ]; then
+            archive="$RUNNER_TEMP/hexagon-sdk-v6.6.0.0-amd64-lnx.tar.xz"
+            curl --fail --location --retry 3 --connect-timeout 30 \
+              --output "$archive" \
+              https://github.com/snapdragon-toolchain/hexagon-sdk/releases/download/v6.6.0.0/hexagon-sdk-v6.6.0.0-amd64-lnx.tar.xz
+            printf '%s  %s\n' \
+              4a916e42c1dab9efdf2e58773f901ea780fa43c907bf054ab76572a3b3d942f4 \
+              "$archive" | sha256sum --check --strict
+            mkdir -p "$RUNNER_TEMP/hexagon-sdk"
+            tar --extract --xz --file "$archive" --directory "$RUNNER_TEMP/hexagon-sdk" --no-same-owner
+            rm "$archive"
+          fi
+          tools_path=$(python3 -c \
+            'import json,sys; d=json.load(open(sys.argv[1])); assert d["root"]["id"]["version"] == "6.6.0.0"; print(d["root"]["tools"]["info"][0]["path"])' \
+            "$sdk_dir/hexagon_sdk.json")
+          "$sdk_dir/$tools_path/Tools/bin/hexagon-clang" --version
+          printf 'HEXAGON_SDK_ROOT=%s\nHEXAGON_TOOLS_ROOT=%s\n' \
+            "$sdk_dir" "$sdk_dir/$tools_path" >> "$GITHUB_ENV"
+
       - name: Run bare-make generate
         working-directory: ${{ env.WORKDIR }}
         shell: bash

@@ -70,5 +70,7 @@ jobs:
       include-cuda-arm64: true
       include-cuda-arm64-jetson: true
       verify-linux-x64-cuda-module: true
+      platform-cmake-defines: |
+        android-arm64: -D QVAC_HEXAGON=ON
       matrix-include: ${{ inputs.cuda-platforms-only == true && '[{"os":"ubuntu-22.04","runner_key":"linux_ubuntu2204_x64","platform":"linux","arch":"x64"},{"os":"ubuntu-22.04-arm","runner_key":"ubuntu_2204_arm","platform":"linux","arch":"arm64"},{"os":"windows-2025","runner_key":"win_2025_x64","platform":"win32","arch":"x64"}]' || 'default' }}
     secrets: inherit

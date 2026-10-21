@@ -158,6 +158,14 @@ feature and requires Hexagon SDK 6.6.0.0 with Hexagon Tools 19.0.07. Set
 `HEXAGON_TOOLS_ROOT` before configuring; the Android triplet tracks both
 values in the vcpkg cache identity. Missing or mismatched tools fail the build.
 
+Fabric's Android arm64 prebuild configuration enables `QVAC_HEXAGON=ON`.
+The reusable prebuild workflow downloads and caches the pinned Linux Hexagon
+SDK archive, verifies its SHA-256, and exports the SDK and tools paths before
+configuration. Other platform entries keep their existing settings. PR
+workflows using `pull_request_target` load workflow definitions from the base
+branch, so workflow changes must be available there before those runs can
+exercise the new configuration.
+
 The registered development overlay pins engine revision
 `d312abcad4b15944e4eaa65e042185e7ed58c12b` from engine PR
 [#402](https://github.com/tetherto/qvac-fabric-llm.cpp/pull/402). It includes
