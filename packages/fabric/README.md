@@ -167,7 +167,7 @@ branch, so workflow changes must be available there before those runs can
 exercise the new configuration.
 
 The registered development overlay pins engine revision
-`d312abcad4b15944e4eaa65e042185e7ed58c12b` from engine PR
+`7b70daebc785ee1836b8d98988a3fa79fc4f28e0` from engine PR
 [#402](https://github.com/tetherto/qvac-fabric-llm.cpp/pull/402). It includes
 the standard/quick Hexagon GELU dispatch and F32 QUICK GELU CPU precision
 fixes, plus the BF16 projection acceleration. Explicit CPU reference mode
@@ -177,6 +177,10 @@ gated-operation tables are unchanged. The extra F32 table uses 256 KiB.
 Hexagon caches eligible BF16 matrix weights as F16 while preserving BF16
 readback and refreshing the cache after uploads. The EmbeddingGemma 2
 projection cache adds 12 MiB and uses F16 range and precision.
+
+The pinned evaluation driver extends short custom corpora past the aligned
+batch capacity and checks a partial final batch. This evaluation-only fix
+does not change native runtime sources.
 
 The engine REF and archive SHA-512 live in
 `vcpkg-overlays/ports/qvac-fabric/portfile.cmake`. No local engine patch is
