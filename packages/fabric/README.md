@@ -159,18 +159,24 @@ feature and requires Hexagon SDK 6.6.0.0 with Hexagon Tools 19.0.07. Set
 values in the vcpkg cache identity. Missing or mismatched tools fail the build.
 
 The registered development overlay pins engine revision
-`370265fedc9c69a4ca2ebd80516bde34892e9f7d` with EmbeddingGemma 2 support and
-applies `hexagon-gelu.patch` for the standard/quick Hexagon GELU dispatch fix
-and F32 QUICK GELU CPU precision fixes. Explicit CPU reference mode evaluates
-QUICK GELU directly. The optimized unary F32 path retains lookup-based
-execution with F32 table outputs, avoiding an additional FP16 output rounding;
-the existing FP16 and gated-operation tables are unchanged. The extra F32
-table uses 256 KiB. The archive SHA-512 and patch live in
-`vcpkg-overlays/ports/qvac-fabric/`; this
-does not change a released package version. The overlay changes the engine
-source for every Fabric platform, including Hexagon-disabled builds, so run
-normal Fabric and consumer checks before merging. Replace it with a matched
-engine release and registry pin when those are available, following
+`d312abcad4b15944e4eaa65e042185e7ed58c12b` from engine PR
+[#402](https://github.com/tetherto/qvac-fabric-llm.cpp/pull/402). It includes
+the standard/quick Hexagon GELU dispatch and F32 QUICK GELU CPU precision
+fixes, plus the BF16 projection acceleration. Explicit CPU reference mode
+evaluates QUICK GELU directly. The optimized unary F32 path retains
+lookup-based execution with F32 table outputs; the existing FP16 and
+gated-operation tables are unchanged. The extra F32 table uses 256 KiB.
+Hexagon caches eligible BF16 matrix weights as F16 while preserving BF16
+readback and refreshing the cache after uploads. The EmbeddingGemma 2
+projection cache adds 12 MiB and uses F16 range and precision.
+
+The engine REF and archive SHA-512 live in
+`vcpkg-overlays/ports/qvac-fabric/portfile.cmake`. No local engine patch is
+applied. This temporary validation overlay does not change a released
+package version. It changes the engine source for every Fabric platform,
+including Hexagon-disabled builds, so run normal Fabric and consumer
+checks. Replace it with a matched engine release and registry pin when
+those are available, following
 [INTEGRATION.md](./INTEGRATION.md#fabric-stack-prs-parallel-qvac-fabric-development).
 
 ```bash
